@@ -46,24 +46,25 @@ func main() {
 	userService := users.NewService(users.NewPostgresStore(db))
 	userHandler := users.NewHandler(userService)
 
-	// pendingExchanges satisfies reviews.ExchangeLookup and
-	// stats.ExchangeStatsProvider until Person 3's exchanges store exists.
-	// See internal/exchanges/pending.go.
-	pendingExchanges := exchanges.PendingIntegration{}
-
 	serviceUseCases := services.NewUseCases(services.NewPostgresStore(db), userService)
 	serviceHandler := services.NewHandler(serviceUseCases)
 
-	reviewUseCases := reviews.NewUseCases(reviews.NewPostgresStore(db), pendingExchanges, serviceUseCases)
+	// The exchanges store owns the exchange lifecycle and credit journal and
+	// satisfies reviews.ExchangeLookup and stats.ExchangeStatsProvider, so the
+	// reviews and statistics features consume real exchange data.
+	exchangeUseCases := exchanges.NewUseCases(exchanges.NewPostgresStore(db), serviceUseCases, userService)
+	exchangeHandler := exchanges.NewHandler(exchangeUseCases)
+
+	reviewUseCases := reviews.NewUseCases(reviews.NewPostgresStore(db), exchangeUseCases, serviceUseCases)
 	reviewHandler := reviews.NewHandler(reviewUseCases)
 
-	statsUseCases := stats.NewUseCases(stats.NewPostgresStore(db), pendingExchanges, userService)
+	statsUseCases := stats.NewUseCases(stats.NewPostgresStore(db), exchangeUseCases, userService)
 	statsHandler := stats.NewHandler(statsUseCases)
 
 	server := &http.Server{
 		Addr: cfg.Address,
 		Handler: httpapi.NewApplicationHandler(logger,
-			userHandler, serviceHandler, reviewHandler, statsHandler,
+			userHandler, serviceHandler, exchangeHandler, reviewHandler, statsHandler,
 		),
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
