@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -22,23 +23,31 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	cfg := config.Load()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if err := run(ctx, logger, config.Load()); err != nil {
+		logger.Error("server terminated", "error", err)
+		os.Exit(1)
+	}
+}
+
+// run wires every feature, starts the HTTP server, and blocks until ctx is
+// cancelled (a shutdown signal) or the server fails, then shuts down
+// gracefully. It returns an error instead of exiting so it can be driven from
+// tests; main translates a non-nil error into a non-zero exit code.
+func run(ctx context.Context, logger *slog.Logger, cfg config.Config) error {
 	databaseCtx, cancelDatabase := context.WithTimeout(ctx, 10*time.Second)
 	db, err := database.Open(databaseCtx, cfg.DatabaseURL)
 	if err != nil {
 		cancelDatabase()
-		logger.Error("database unavailable", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("database unavailable: %w", err)
 	}
 	if err := database.Migrate(databaseCtx, db); err != nil {
 		cancelDatabase()
 		db.Close()
-		logger.Error("database migration failed", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("database migration failed: %w", err)
 	}
 	cancelDatabase()
 	defer db.Close()
@@ -80,7 +89,7 @@ func main() {
 	select {
 	case err := <-serverErrors:
 		if !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("HTTP server failed", "error", err)
+			return fmt.Errorf("HTTP server failed: %w", err)
 		}
 	case <-ctx.Done():
 		logger.Info("shutdown requested")
@@ -89,6 +98,7 @@ func main() {
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("graceful shutdown failed", "error", err)
+		return fmt.Errorf("graceful shutdown failed: %w", err)
 	}
+	return nil
 }
