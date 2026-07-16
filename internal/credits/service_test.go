@@ -118,3 +118,38 @@ func TestRecordDuplicateIsConflict(t *testing.T) {
 		t.Fatalf("Record(duplicate) error = %v, want conflict", err)
 	}
 }
+
+// failingExec returns a plain error (no SQLState), exercising Record's general
+// error branch and isUniqueViolation's non-driver-error path.
+type failingExec struct{}
+
+func (failingExec) ExecContext(_ context.Context, _ string, _ ...any) (sql.Result, error) {
+	return nil, errors.New("connection reset")
+}
+
+func (failingExec) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
+	panic("QueryRowContext should not be called by Record")
+}
+
+func TestRecordGeneralErrorIsWrapped(t *testing.T) {
+	err := Record(context.Background(), failingExec{}, Entry{UserID: 7, ExchangeID: 3, Amount: 2, Type: TypeSpend})
+	if err == nil {
+		t.Fatal("Record() expected an error")
+	}
+	// It is neither a validation nor a conflict: it is an unexpected DB error.
+	if errors.Is(err, httpapi.ErrValidation) || errors.Is(err, httpapi.ErrConflict) {
+		t.Fatalf("Record() error = %v, want a plain wrapped error", err)
+	}
+}
+
+func TestIsUniqueViolation(t *testing.T) {
+	if isUniqueViolation(nil) {
+		t.Fatal("isUniqueViolation(nil) = true, want false")
+	}
+	if isUniqueViolation(errors.New("plain")) {
+		t.Fatal("isUniqueViolation(plain) = true, want false")
+	}
+	if !isUniqueViolation(uniqueViolationError{}) {
+		t.Fatal("isUniqueViolation(23505) = false, want true")
+	}
+}
