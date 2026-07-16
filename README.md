@@ -1,92 +1,105 @@
 # BarterSwap - API d'échange de compétences
 
-BarterSwap is a Go REST API where time credits are exchanged for services. This
-repository contains the common application infrastructure (Person 1: users,
-skills, middleware, PostgreSQL setup, welcome credits), the Person 2 scope
-(service advertisements, reviews, and user statistics), and the Person 3 scope
-(the exchange lifecycle and the credit ledger). See
-[Exchanges and the credit ledger](#exchanges-and-the-credit-ledger-person-3)
-for the transactional design.
+BarterSwap est une API REST Go où des crédits-temps s'échangent contre des
+services entre particuliers (une heure rendue = une heure reçue). Le dépôt
+couvre l'ensemble du sujet : comptes et compétences (Person 1), annonces de
+services, avis et statistiques (Person 2), cycle de vie des échanges et
+journal de crédits (Person 3).
 
-## Requirements
+## Prérequis
 
-- Go 1.22 or later
+- Go 1.22 ou supérieur
 - PostgreSQL
-- Docker Compose is optional but provides the quickest local database setup
+- Docker Compose (optionnel, le plus rapide pour la base locale)
 
-The PostgreSQL driver is the only external Go dependency. The API uses
-`net/http`, `encoding/json`, `context`, and `database/sql` from the standard
-library; it does not use an ORM or HTTP framework.
+Le pilote PostgreSQL est la seule dépendance externe. L'API utilise
+uniquement `net/http`, `encoding/json`, `context` et `database/sql` de la
+stdlib — pas d'ORM, pas de framework HTTP.
 
 ## Installation
 
-Start PostgreSQL:
-
 ```bash
 docker compose up -d postgres
-```
-
-Then start the API:
-
-```bash
 go mod tidy
 go run ./cmd/server
 ```
 
-The default server address is `http://localhost:8080`. The application applies
-the embedded schema (`internal/database/schema.sql`) automatically at startup.
+Le serveur écoute par défaut sur `http://localhost:8080` et applique le
+schéma embarqué (`internal/database/schema.sql`) au démarrage.
 
-Optional environment variables:
-
-| Variable | Default |
+| Variable | Défaut |
 | --- | --- |
 | `PORT` | `8080` |
 | `DATABASE_URL` | `postgres://postgres:postgres@localhost:5432/barterswap?sslmode=disable` |
 
-## Authentication
+## Authentification
 
-Protected endpoints use a simple header containing the authenticated user's ID:
+Un header simple porte l'identité de l'utilisateur authentifié :
 
 ```text
 X-User-ID: 1
 ```
 
-Profiles and skills are publicly readable. Updating a profile or its skills
-requires the header, and a user may update only their own data.
+Les lectures publiques (profils, services, avis, stats) ne le nécessitent
+pas ; toute écriture (création, modification, action sur un échange) le
+requiert.
 
-## Current endpoints
+## Collection Postman
 
-| Method | Path | Authentication | Description |
+`BarterSwap.postman_collection.json` (à la racine) couvre **tous** les
+endpoints et rejoue automatiquement le scénario complet du sujet : création
+de deux utilisateurs, compétence, service, demande d'échange, conflit `409`,
+accept/reject/complete/cancel avec vérification des soldes de crédits, avis,
+statistiques, et tous les cas d'erreur (`400`/`401`/`403`/`404`/`409`).
+
+Import : Postman → **Import** → sélectionner le fichier. La variable de
+collection `baseUrl` pointe vers `http://localhost:8080` ; les autres
+variables (`aliceId`, `serviceId`, `exchangeId`...) se remplissent seules au
+fil des requêtes. Lancez le dossier "Users" avant "Services", puis
+"Exchanges", "Reviews" et "Statistics" — ou utilisez le **Collection
+Runner** pour tout exécuter d'un coup.
+
+Exécution en ligne de commande (Newman) :
+
+```bash
+npx newman run BarterSwap.postman_collection.json
+```
+
+## Endpoints
+
+| Méthode | Chemin | Auth | Description |
 | --- | --- | --- | --- |
-| `GET` | `/healthz` | No | Health check |
-| `POST` | `/api/users` | No | Create a user with 10 welcome credits |
-| `GET` | `/api/users/{id}` | No | Get a public profile, skills, and balance |
-| `PUT` | `/api/users/{id}` | Owner | Replace profile fields |
-| `GET` | `/api/users/{id}/skills` | No | Get the user's skills |
-| `PUT` | `/api/users/{id}/skills` | Owner | Replace all the user's skills |
-| `GET` | `/api/services` | No | List services, filterable by `categorie`, `ville`, `search` |
-| `POST` | `/api/services` | Yes | Publish a service for one of your skills |
-| `GET` | `/api/services/{id}` | No | Get one service |
-| `PUT` | `/api/services/{id}` | Owner | Replace a service's fields |
-| `DELETE` | `/api/services/{id}` | Owner | Delete a service |
-| `POST` | `/api/exchanges` | Yes | Request an exchange for a service |
-| `GET` | `/api/exchanges` | Yes | List your exchanges, filterable by `status` |
-| `GET` | `/api/exchanges/{id}` | Participant | Get one exchange |
-| `PUT` | `/api/exchanges/{id}/accept` | Owner | Accept a pending request (blocks the requester's credits) |
-| `PUT` | `/api/exchanges/{id}/reject` | Owner | Reject a pending request |
-| `PUT` | `/api/exchanges/{id}/complete` | Requester | Confirm completion (releases credits to the owner) |
-| `PUT` | `/api/exchanges/{id}/cancel` | Participant | Cancel; refunds the requester if already accepted |
-| `POST` | `/api/exchanges/{id}/review` | Yes | Review a completed exchange (see note below) |
-| `GET` | `/api/users/{id}/reviews` | No | Reviews received by a user |
-| `GET` | `/api/services/{id}/reviews` | No | Reviews left on a service |
-| `GET` | `/api/users/{id}/stats` | No | Aggregated statistics for a user |
+| `GET` | `/healthz` | Non | Health check |
+| `POST` | `/api/users` | Non | Créer un compte (10 crédits de bienvenue) |
+| `GET` | `/api/users/{id}` | Non | Profil public, compétences, solde |
+| `PUT` | `/api/users/{id}` | Owner | Modifier son profil |
+| `GET` | `/api/users/{id}/skills` | Non | Compétences d'un utilisateur |
+| `PUT` | `/api/users/{id}/skills` | Owner | Remplacer ses compétences |
+| `GET` | `/api/services` | Non | Lister, filtrable par `categorie`, `ville`, `search` |
+| `POST` | `/api/services` | Oui | Publier un service lié à une compétence |
+| `GET` | `/api/services/{id}` | Non | Détail d'un service |
+| `PUT` | `/api/services/{id}` | Owner | Modifier son annonce |
+| `DELETE` | `/api/services/{id}` | Owner | Supprimer son annonce |
+| `POST` | `/api/exchanges` | Oui | Demander un échange pour un service |
+| `GET` | `/api/exchanges` | Oui | Lister ses échanges, filtrable par `status` |
+| `GET` | `/api/exchanges/{id}` | Participant | Détail d'un échange |
+| `PUT` | `/api/exchanges/{id}/accept` | Owner | Accepter (bloque les crédits du demandeur) |
+| `PUT` | `/api/exchanges/{id}/reject` | Owner | Refuser une demande |
+| `PUT` | `/api/exchanges/{id}/complete` | Requester | Confirmer (libère les crédits à l'offreur) |
+| `PUT` | `/api/exchanges/{id}/cancel` | Participant | Annuler ; rembourse si déjà accepté |
+| `POST` | `/api/exchanges/{id}/review` | Oui | Noter un échange terminé |
+| `GET` | `/api/users/{id}/reviews` | Non | Avis reçus par un utilisateur |
+| `GET` | `/api/services/{id}/reviews` | Non | Avis sur un service |
+| `GET` | `/api/users/{id}/stats` | Non | Statistiques agrégées |
 
-The allowed skill levels are `débutant`, `intermédiaire`, and `expert`. The
-allowed service categories are `Informatique`, `Jardinage`, `Bricolage`,
-`Cuisine`, `Musique`, `Langues`, `Sport`, `Tutorat`, `Demenagement`,
-`Photographie`, `Animalier`, `Couture`, `Autre`.
+Niveaux de compétence : `débutant`, `intermédiaire`, `expert`. Catégories de
+service : `Informatique`, `Jardinage`, `Bricolage`, `Cuisine`, `Musique`,
+`Langues`, `Sport`, `Tutorat`, `Demenagement`, `Photographie`, `Animalier`,
+`Couture`, `Autre`.
 
-### Create a user
+## Exemples curl
+
+### Créer un utilisateur
 
 ```bash
 curl -i -X POST http://localhost:8080/api/users \
@@ -94,232 +107,93 @@ curl -i -X POST http://localhost:8080/api/users \
   -d '{"pseudo":"Alice","bio":"Développeuse Go","ville":"Paris"}'
 ```
 
-### Replace skills
+### Publier un service
 
-`PUT` replaces the complete skill list; it does not append individual skills.
-
-```bash
-curl -i -X PUT http://localhost:8080/api/users/1/skills \
-  -H "Content-Type: application/json" \
-  -H "X-User-ID: 1" \
-  -d '[
-    {"nom":"Informatique","niveau":"expert"},
-    {"nom":"Cuisine","niveau":"débutant"}
-  ]'
-```
-
-### Update a profile
-
-```bash
-curl -i -X PUT http://localhost:8080/api/users/1 \
-  -H "Content-Type: application/json" \
-  -H "X-User-ID: 1" \
-  -d '{"pseudo":"Alice","bio":"Nouvelle bio","ville":"Lyon"}'
-```
-
-### Read a profile
-
-```bash
-curl -i http://localhost:8080/api/users/1
-```
-
-### Publish a service
-
-The category must match one of the authenticated user's skills.
+La catégorie doit correspondre à une compétence de l'utilisateur.
 
 ```bash
 curl -i -X POST http://localhost:8080/api/services \
-  -H "Content-Type: application/json" \
-  -H "X-User-ID: 1" \
-  -d '{
-    "titre":"Cours de Go pour débutants",
-    "description":"Deux heures de programmation en binôme",
-    "categorie":"Informatique",
-    "duree_minutes":120,
-    "credits":2,
-    "ville":"Paris"
-  }'
+  -H "Content-Type: application/json" -H "X-User-ID: 1" \
+  -d '{"titre":"Cours de Go","categorie":"Informatique","duree_minutes":120,"credits":2,"ville":"Paris"}'
 ```
 
-### List and filter services
+### Cycle de vie complet d'un échange
+
+Demandeur = user 2, offreur = user 1.
 
 ```bash
-curl -i "http://localhost:8080/api/services?categorie=Informatique&ville=Paris"
-curl -i "http://localhost:8080/api/services?search=Go"
+curl -i -X POST http://localhost:8080/api/exchanges -H "Content-Type: application/json" -H "X-User-ID: 2" -d '{"service_id":1}'
+curl -i -X PUT http://localhost:8080/api/exchanges/1/accept   -H "X-User-ID: 1"   # bloque les crédits
+curl -i -X PUT http://localhost:8080/api/exchanges/1/complete -H "X-User-ID: 2"   # les libère à l'offreur
 ```
 
-### Update or delete a service
-
-Only the provider who published the service may modify or delete it.
-
-```bash
-curl -i -X PUT http://localhost:8080/api/services/1 \
-  -H "Content-Type: application/json" \
-  -H "X-User-ID: 1" \
-  -d '{
-    "titre":"Cours de Go avancé",
-    "categorie":"Informatique",
-    "duree_minutes":90,
-    "credits":3,
-    "actif":true
-  }'
-
-curl -i -X DELETE http://localhost:8080/api/services/1 -H "X-User-ID: 1"
-```
-
-### Request and drive an exchange
-
-The requester comes from authentication; the owner and price are resolved from
-the service, never trusted from the client. A user cannot request their own
-service, must have enough credits, and a service can hold only one `pending` or
-`accepted` exchange at a time (a second request returns `409`).
-
-```bash
-# User 2 requests service 1 (owned by user 1)
-curl -i -X POST http://localhost:8080/api/exchanges \
-  -H "Content-Type: application/json" \
-  -H "X-User-ID: 2" \
-  -d '{"service_id":1}'
-
-# List your exchanges, optionally filtered by status
-curl -i "http://localhost:8080/api/exchanges" -H "X-User-ID: 2"
-curl -i "http://localhost:8080/api/exchanges?status=accepted" -H "X-User-ID: 2"
-
-# Get one exchange (participants only)
-curl -i http://localhost:8080/api/exchanges/1 -H "X-User-ID: 2"
-
-# The owner accepts (blocks the requester's credits) or rejects
-curl -i -X PUT http://localhost:8080/api/exchanges/1/accept -H "X-User-ID: 1"
-curl -i -X PUT http://localhost:8080/api/exchanges/1/reject -H "X-User-ID: 1"
-
-# The requester confirms completion (releases the credits to the owner)
-curl -i -X PUT http://localhost:8080/api/exchanges/1/complete -H "X-User-ID: 2"
-
-# Either participant can cancel; an accepted exchange refunds the requester
-curl -i -X PUT http://localhost:8080/api/exchanges/1/cancel -H "X-User-ID: 2"
-```
-
-### Review a completed exchange
-
-Only the requester or the owner of a `completed` exchange may leave one
-review each; the target is resolved automatically as the other participant.
+### Noter l'échange terminé
 
 ```bash
 curl -i -X POST http://localhost:8080/api/exchanges/1/review \
-  -H "Content-Type: application/json" \
-  -H "X-User-ID: 1" \
+  -H "Content-Type: application/json" -H "X-User-ID: 2" \
   -d '{"note":5,"commentaire":"Ponctuel et de bon conseil"}'
 ```
 
-### Read reviews and statistics
+Tous les autres cas (filtres, reject, cancel, erreurs 400/403/404/409...)
+sont dans la [collection Postman](#collection-postman).
 
-```bash
-curl -i http://localhost:8080/api/users/1/reviews
-curl -i http://localhost:8080/api/services/1/reviews
-curl -i http://localhost:8080/api/users/1/stats
-```
-
-## Exchanges and the credit ledger (Person 3)
-
-The exchange lifecycle and the credit journal are implemented in
-`internal/exchanges` and `internal/credits`. `*exchanges.UseCases` satisfies the
-two consumer-side interfaces the reviews and statistics features declared —
-`reviews.ExchangeLookup` (`GetExchange`) and `stats.ExchangeStatsProvider`
-(`CountCompletedExchanges`) — so `cmd/server/main.go` wires the real store into
-both consumers with no change to their code, exactly as the interface contracts
-intended.
-
-### Lifecycle and who does what
+## Cycle de vie d'un échange et journal de crédits
 
 ```text
 pending -> accepted -> completed
    |          |
    v          v
-rejected   cancelled   (a pending exchange can also be cancelled)
+rejected   cancelled   (un échange pending peut aussi être annulé)
 ```
 
-- **Create** (`POST /api/exchanges`): the requester is the authenticated user;
-  the owner and price come from the service, never the client. A user cannot
-  request their own service, the service must be active, the requester must
-  have enough credits, and a service can hold at most one `pending` or
-  `accepted` exchange — a second request returns `409`.
-- **Accept** (owner only): moves `pending -> accepted` and **blocks** the
-  service price from the requester as a `spend` entry, inside one transaction.
-- **Reject** (owner only): moves `pending -> rejected`. No credit was blocked,
-  so nothing is refunded.
-- **Complete** (**requester** only): moves `accepted -> completed` and
-  **releases** the blocked credits to the owner as an `earn` entry. The team's
-  decision is that the requester — the party who received the service —
-  confirms completion, since that is what releases their own blocked credits
-  and prevents an owner from crediting themselves prematurely.
-- **Cancel** (either participant): a `pending` exchange is simply cancelled; an
-  `accepted` exchange is cancelled **and refunds** the requester as a `refund`
-  entry.
+- **Create** : le demandeur vient de l'authentification ; l'offreur et le
+  prix viennent du service, jamais du client. Impossible de se demander à
+  soi-même, service inactif refusé, crédits insuffisants refusés, et un
+  service ne peut avoir qu'un `pending`/`accepted` à la fois (sinon `409`).
+- **Accept** (owner) : bloque le prix chez le demandeur (`spend`).
+- **Reject** (owner) : rien n'était bloqué, rien n'est remboursé.
+- **Complete** (**requester**, celui qui a reçu le service) : libère les
+  crédits bloqués vers l'offreur (`earn`).
+- **Cancel** (participant) : simple annulation si `pending` ; remboursement
+  (`refund`) si `accepted`.
 
-### Transactional guarantees
+Toute transition qui déplace des crédits s'exécute dans **une transaction
+SQL unique** qui verrouille la ligne (`FOR UPDATE`), revérifie l'état, écrit
+le mouvement de crédit puis met à jour le statut : tout commit ou rollback
+ensemble. **Aucun mutex Go** — la concurrence est gérée par PostgreSQL :
 
-- Every status change that moves credits (`accept`, `complete`, cancellation of
-  an accepted exchange) runs in a single `database/sql` transaction that locks
-  the exchange row `FOR UPDATE`, re-checks its state (and the requester's
-  balance on `accept`), records the credit movement, and updates the status.
-  The status change and its credit movement commit or roll back together.
-- No Go mutex is used. Concurrency is handled entirely in the database:
-  - A partial unique index (`idx_exchanges_active_service`) makes two
-    simultaneous requests for one service race at the database; the losing
-    `INSERT` fails and is surfaced as `409 Conflict`.
-  - A partial unique index on `credit_transactions (exchange_id, type)`
-    guarantees a debit, earning, or refund can never be recorded twice for the
-    same exchange and operation.
-  - Status guards (`WHERE ... AND status = <expected>`) plus the row lock mean a
-    repeated transition is rejected and never transfers credits a second time.
+- un index unique partiel sur `exchanges(service_id)` fait échouer la
+  seconde réservation simultanée d'un même service → `409` ;
+- un index unique partiel sur `credit_transactions(exchange_id, type)`
+  empêche qu'un débit/crédit/remboursement soit enregistré deux fois ;
+- des gardes de statut (`WHERE status = <attendu>`) plus le verrou de ligne
+  empêchent qu'une transition répétée déplace des crédits une seconde fois.
 
-### Credit journal
+`internal/credits` est une petite bibliothèque (pas un feature HTTP) qui
+porte le journal append-only ; un solde est la somme des entrées d'un
+utilisateur, jamais une colonne mutable. Le crédit de bienvenue utilise le
+même contrat (`earn`, `exchange_id` `NULL`).
 
-`internal/credits` is a small library (not an HTTP feature) that owns the
-append-only journal. A balance is the sum of a user's entries, never a mutable
-column. Its `Record`/`Balance` helpers accept an `Execer` satisfied by both
-`*sql.DB` and `*sql.Tx`, so the exchange store records movements **inside** the
-transaction that drives the status change. The welcome credit is the same
-journal contract: an `earn` entry with a `NULL` exchange ID (Person 1 records it
-when a user is created). The internal `credits_cost` column on `exchanges`
-snapshots the service price at request time, so the amount blocked on
-acceptance is exactly the amount released on completion or refunded on
-cancellation even if the provider later edits the price.
-
-The `reviews` table stores `exchange_id` without a foreign key (same pattern as
-`credit_transactions`), plus a denormalized `service_id` snapshot captured from
-the exchange at review creation time, so `GET /api/services/{id}/reviews` does
-not need a live join against `exchanges`.
-
-## Error format
-
-Errors use a consistent JSON structure:
+## Format des erreurs
 
 ```json
-{
-  "error": {
-    "code": "validation_error",
-    "message": "validation error: pseudo is required"
-  }
-}
+{"error": {"code": "validation_error", "message": "validation error: pseudo is required"}}
 ```
 
-The shared sentinel errors (`httpapi.ErrValidation`, `ErrUnauthorized`,
-`ErrForbidden`, `ErrNotFound`, `ErrConflict`) map to `400`, `401`, `403`,
-`404`, `409`, or `500` as appropriate.
+Les sentinelles (`httpapi.ErrValidation`, `ErrUnauthorized`, `ErrForbidden`,
+`ErrNotFound`, `ErrConflict`) se traduisent en `400`, `401`, `403`, `404`,
+`409` ou `500`.
 
 ## Tests
-
-Run the normal unit and HTTP tests:
 
 ```bash
 go test -v -cover ./...
 go vet ./...
 ```
 
-Optional PostgreSQL integration tests verify the real `database/sql` stores
-for users, services, reviews, and statistics. They are disabled by default so
-normal tests do not require a running database:
+Les tests Postgres (stores réels, transactions) sont optionnels et exclus
+du run par défaut :
 
 ```bash
 RUN_POSTGRES_INTEGRATION=1 \
@@ -327,116 +201,60 @@ TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/barterswap?sslmod
 go test ./... -run Integration -v
 ```
 
-Each test creates a small number of temporary rows and deletes them before
-finishing. Use a development database, never a production database.
+Couverture : ~50% en run par défaut (les stores Postgres, testés
+uniquement via l'intégration ci-dessus, comptent pour 0% sinon — convention
+volontaire dans tout le repo). En combinant les deux suites
+(`go test ./... -coverprofile=cover.out` avec `RUN_POSTGRES_INTEGRATION=1`),
+la couverture globale monte à **~72%**, au-dessus du seuil de 60% demandé.
 
-## Architecture and integration
+## Architecture
 
-The repository is organized like the Go project shown in the course
-(Module 8): a thin `cmd/` entry point, one package per feature under
-`internal/` (not importable outside this module), and a project-agnostic,
-reusable package under `pkg/`. This keeps the codebase clean as the team
-grows the project — no giant flat directory of files — while every
-responsibility (HTTP exposure, business logic, storage) stays clearly
-separated inside each feature package, exactly as required by the subject.
-
-```text
-barterswap/
-├── cmd/
-│   └── server/
-│       └── main.go            # wires config, database, and every feature
-├── internal/
-│   ├── config/       # environment configuration
-│   ├── database/     # PostgreSQL connection + embedded schema.sql
-│   ├── testutil/     # shared HTTP test helper (PerformRequest)
-│   ├── users/        # Person 1: accounts, skills, welcome credits
-│   ├── services/     # Person 2: service advertisements
-│   ├── reviews/      # Person 2: reviews on completed exchanges
-│   ├── stats/        # Person 2: aggregated user dashboard
-│   ├── exchanges/    # Person 3: exchange lifecycle (transactional)
-│   └── credits/      # Person 3: append-only credit journal (library)
-├── pkg/
-│   └── httpapi/      # reusable HTTP plumbing (see below)
-├── go.mod / go.sum
-├── compose.yaml
-└── README.md
-```
-
-`pkg/httpapi` is deliberately dependency-free with respect to BarterSwap
-domain types — it only knows about `net/http` — which is what makes it
-reusable across every feature package without import cycles: sentinel
-errors, JSON encode/decode helpers, middleware (`Chain`, `CORS`, `Recovery`,
-`Logging`), the `X-User-ID` authentication context, and routing
-(`RouteRegistrar`, `NewApplicationHandler`).
-
-Each feature package follows the same internal split, mirroring
-`internal/users`:
+Le dépôt suit la structure `cmd/` + `internal/` + `pkg/` vue en cours
+(Module 8) : un point d'entrée fin, un package Go par feature sous
+`internal/` (non importable hors du module), et un package réutilisable
+sous `pkg/`.
 
 ```text
-HTTP request
-    -> middleware (pkg/httpapi)
-    -> handler.go        (parses the request, calls use cases, writes the response)
-    -> service.go         (validation and business rules)
-    -> store_postgres.go  (parameterized SQL, context-aware)
-    -> PostgreSQL
+cmd/server/main.go     # câble config, base de données, et chaque feature
+internal/
+├── config/, database/, testutil/   # infrastructure commune
+├── users/       # Person 1 — comptes, compétences, crédits de bienvenue
+├── services/    # Person 2 — annonces de services
+├── reviews/     # Person 2 — avis sur échanges terminés
+├── stats/       # Person 2 — tableau de bord agrégé
+├── exchanges/   # Person 3 — cycle de vie des échanges (transactionnel)
+└── credits/     # Person 3 — journal de crédits append-only (bibliothèque)
+pkg/httpapi/      # HTTP réutilisable : erreurs, JSON, middlewares, auth, routing
 ```
 
-| Feature | Package | Model | Business logic | Storage | HTTP |
-| --- | --- | --- | --- | --- | --- |
-| Users & skills | `internal/users` | `model.go` | `service.go` | `store_postgres.go` | `handler.go` |
-| Services | `internal/services` | `model.go` | `service.go` | `store_postgres.go` | `handler.go` |
-| Reviews | `internal/reviews` | `model.go` | `service.go` | `store_postgres.go` | `handler.go` |
-| Statistics | `internal/stats` | (in `service.go`) | `service.go` | `store_postgres.go` | `handler.go` |
-| Exchanges | `internal/exchanges` | `model.go` | `service.go` | `store_postgres.go` | `handler.go` |
-| Credits | `internal/credits` | `model.go` | `service.go` | `store_postgres.go` | (library, no HTTP) |
+Chaque feature suit le même découpage que `internal/users` :
 
-### Cross-feature dependencies
+```text
+HTTP request -> middleware (pkg/httpapi) -> handler.go -> service.go -> store_postgres.go -> PostgreSQL
+```
 
-To avoid import cycles, every cross-feature dependency is a small interface
-declared on the consumer side (the package that needs the data), satisfied
-implicitly by the producer's concrete type — the same "duck typing" idiom
-from the course, just crossing a package boundary instead of staying in one
-file:
+`pkg/httpapi` ne dépend d'aucun type métier BarterSwap — seulement de
+`net/http` — ce qui le rend réutilisable par toutes les features sans cycle
+d'import.
 
-- `services.SkillChecker` (needs only `UserHasSkill(ctx, userID, name) (bool, error)`)
-  is satisfied by `*users.Service` without `internal/services` importing
-  `internal/users`.
-- `stats.UserExistenceChecker` (`UserExists(ctx, userID) (bool, error)`) is
-  satisfied by `*users.Service` the same way.
-- `reviews.ServiceExistenceChecker` (`Get(ctx, serviceID) (services.Service, error)`)
-  is satisfied by `*services.UseCases`; `internal/reviews` imports
-  `internal/services` for the `Service` type only (one-directional, no cycle).
-- `reviews.ExchangeLookup` and `stats.ExchangeStatsProvider` are satisfied by
-  `*exchanges.UseCases` (`internal/exchanges`), so the reviews and statistics
-  features consume real exchange data — see
-  [Exchanges and the credit ledger](#exchanges-and-the-credit-ledger-person-3).
-- `exchanges.ServiceLookup` (`Get(ctx, id) (services.Service, error)`) is
-  satisfied by `*services.UseCases`, and `exchanges.RequesterChecker`
-  (`UserExists`) by `*users.Service`, both declared on the consumer side.
+### Dépendances entre features
 
-Only `cmd/server/main.go` imports every feature package to wire them
-together; no feature package imports another feature's concrete types except
-where noted above.
+Chaque dépendance croisée est une petite interface déclarée côté
+consommateur, satisfaite implicitement par le type concret du fournisseur
+(même principe de duck typing que le cours, appliqué au travers d'une
+frontière de package) :
 
-Useful integration contracts for the other team members:
+- `services.SkillChecker` / `stats.UserExistenceChecker` sont satisfaites
+  par `*users.Service` sans import (signatures en types de base uniquement).
+- `reviews.ServiceExistenceChecker` et `exchanges.ServiceLookup` sont
+  satisfaites par `*services.UseCases` (import du type `Service` uniquement,
+  à sens unique).
+- `reviews.ExchangeLookup` et `stats.ExchangeStatsProvider` sont satisfaites
+  par `*exchanges.UseCases`.
+- `exchanges.RequesterChecker` est satisfaite par `*users.Service`.
 
-- Implement `httpapi.RouteRegistrar` and pass the handler to
-  `httpapi.NewApplicationHandler` to add exchange routes.
-- Call `httpapi.AuthenticatedUserID(ctx)` to read the user established by the
-  auth middleware.
-- Call `users.Service.UserExists` and `users.Service.UserHasSkill` for
-  cross-feature validation.
-- Call `services.UseCases.Get` to load a service, its owner, active status,
-  and credit cost when validating an exchange request.
-- `internal/exchanges` implements `reviews.ExchangeLookup` and
-  `stats.ExchangeStatsProvider` on `*exchanges.UseCases`, wired in
-  `cmd/server/main.go`.
-- Reuse `httpapi.WriteJSON`, `httpapi.DecodeJSON`, `httpapi.WriteAPIError`,
-  `httpapi.PathID`, `httpapi.RequireAuthenticatedUser`, and the sentinel
-  errors for consistent HTTP responses.
-- The welcome-credit entry is stored in `credit_transactions` with type
-  `earn` and a `NULL` exchange ID. Person 3 can extend this journal for
-  exchange debits, earnings, and refunds.
+Seul `cmd/server/main.go` importe toutes les features pour les câbler
+ensemble ; aucune feature n'importe le type concret d'une autre en dehors de
+ces contrats d'interface.
 
-Detailed assignments for the remaining features are in
-`WORK_PERSON_2_AND_3.md`.
+Assignations détaillées dans `WORK_PERSON_2_AND_3.md`.

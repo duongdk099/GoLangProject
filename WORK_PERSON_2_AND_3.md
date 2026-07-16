@@ -220,13 +220,12 @@ From Person 3:
 This is the most transaction-sensitive part of the application. Status changes
 and credit updates must be executed atomically with SQL transactions.
 
-### Actual layout (implemented so far)
+### Actual layout (implemented, Person 3)
 
 This feature lives in `internal/exchanges`, following the same layout as
 `internal/users`, `internal/services`, `internal/reviews`, and
-`internal/stats`. A placeholder currently sits at
-`internal/exchanges/pending.go` (`exchanges.PendingIntegration`) — replace it
-with the real implementation below:
+`internal/stats`, plus a small `internal/credits` library (no HTTP surface)
+for the append-only journal:
 
 ```text
 internal/exchanges/model.go
@@ -243,11 +242,12 @@ internal/credits/store_postgres.go
 internal/credits/service_test.go
 ```
 
-The concrete type in `internal/exchanges` must keep satisfying
-`reviews.ExchangeLookup` (`GetExchange`) and `stats.ExchangeStatsProvider`
-(`CountCompletedExchanges`) — the same two methods `PendingIntegration`
-implements today — so `cmd/server/main.go` only needs its two
-`exchanges.PendingIntegration{}` lines swapped for the real store.
+`*exchanges.UseCases` satisfies `reviews.ExchangeLookup` (`GetExchange`) and
+`stats.ExchangeStatsProvider` (`CountCompletedExchanges`), and is wired into
+both consumers in `cmd/server/main.go`. See "Exchanges and the credit ledger
+(Person 3)" in `README.md` for the full transactional design (row locking,
+partial unique indexes for the reservation conflict and duplicate-credit
+protection).
 
 ### A. Exchange endpoints
 

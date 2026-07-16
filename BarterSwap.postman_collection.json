@@ -1,0 +1,948 @@
+{
+  "info": {
+    "_postman_id": "b4a7c2d0-5e1a-4f8b-9c3d-1a2b3c4d5e6f",
+    "name": "BarterSwap API",
+    "description": "API d'échange de compétences entre particuliers (crédit-temps). Couvre tous les endpoints du sujet: utilisateurs, compétences, services, échanges, avis, statistiques.\n\nLancez les dossiers dans l'ordre (Users -> Services -> Exchanges -> Reviews -> Stats) avec le Collection Runner: chaque requête enregistre les IDs utiles (aliceId, bobId, serviceId, exchangeId...) dans les variables de collection pour la suite.\n\nPrérequis: `docker compose up -d postgres` puis `go run ./cmd/server` (port 8080 par défaut).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "aliceId", "value": "" },
+    { "key": "bobId", "value": "" },
+    { "key": "serviceId", "value": "" },
+    { "key": "exchangeId", "value": "" },
+    { "key": "exchangeIdCancel", "value": "" },
+    { "key": "exchangeIdReject", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/healthz", "host": ["{{baseUrl}}"], "path": ["healthz"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Create User - Alice (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('welcome credits = 10', () => pm.expect(body.credit_balance).to.eql(10));",
+                  "pm.collectionVariables.set('aliceId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pseudo\": \"Alice\",\n  \"bio\": \"Développeuse Go\",\n  \"ville\": \"Paris\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] }
+          }
+        },
+        {
+          "name": "Create User - Bob (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('bobId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pseudo\": \"Bob\",\n  \"bio\": \"Jardinier passionné\",\n  \"ville\": \"Lyon\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] }
+          }
+        },
+        {
+          "name": "Error: Create User with Empty Pseudo (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 400', () => pm.response.to.have.status(400));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"pseudo\": \"\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] }
+          }
+        },
+        {
+          "name": "Get Profile - Alice (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/{{aliceId}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{aliceId}}"] }
+          }
+        },
+        {
+          "name": "Update Profile - Alice (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{aliceId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pseudo\": \"Alice\",\n  \"bio\": \"Prof de Go et de jardinage\",\n  \"ville\": \"Paris\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/users/{{aliceId}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{aliceId}}"] }
+          }
+        },
+        {
+          "name": "Error: Update Profile without Auth (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 401', () => pm.response.to.have.status(401));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"pseudo\": \"Hacker\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/users/{{aliceId}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{aliceId}}"] }
+          }
+        },
+        {
+          "name": "Set Skills - Alice (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has Informatique skill', () => {",
+                  "  const skills = pm.response.json();",
+                  "  pm.expect(skills.some(s => s.nom === 'Informatique')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{aliceId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  { \"nom\": \"Informatique\", \"niveau\": \"expert\" },\n  { \"nom\": \"Cuisine\", \"niveau\": \"débutant\" }\n]",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/users/{{aliceId}}/skills", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{aliceId}}", "skills"] }
+          }
+        },
+        {
+          "name": "Get Skills - Alice (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/{{aliceId}}/skills", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{aliceId}}", "skills"] }
+          }
+        },
+        {
+          "name": "Error: Get Unknown User (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 404', () => pm.response.to.have.status(404));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/999999999", "host": ["{{baseUrl}}"], "path": ["api", "users", "999999999"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Services",
+      "item": [
+        {
+          "name": "Create Service - Alice (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('actif = true', () => pm.expect(body.actif).to.be.true);",
+                  "pm.collectionVariables.set('serviceId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{aliceId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titre\": \"Cours de Go pour débutants\",\n  \"description\": \"Deux heures de programmation en binôme\",\n  \"categorie\": \"Informatique\",\n  \"duree_minutes\": 120,\n  \"credits\": 3,\n  \"ville\": \"Paris\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/services", "host": ["{{baseUrl}}"], "path": ["api", "services"] }
+          }
+        },
+        {
+          "name": "Error: Create Service without Matching Skill (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 400', () => pm.response.to.have.status(400));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{aliceId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titre\": \"Cours de sport\",\n  \"categorie\": \"Sport\",\n  \"duree_minutes\": 60,\n  \"credits\": 2\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/services", "host": ["{{baseUrl}}"], "path": ["api", "services"] }
+          }
+        },
+        {
+          "name": "List Services (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/services", "host": ["{{baseUrl}}"], "path": ["api", "services"] }
+          }
+        },
+        {
+          "name": "List Services Filtered by Categorie (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('all results match categorie', () => {",
+                  "  pm.response.json().forEach(s => pm.expect(s.categorie).to.eql('Informatique'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/services?categorie=Informatique",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "services"],
+              "query": [{ "key": "categorie", "value": "Informatique" }]
+            }
+          }
+        },
+        {
+          "name": "List Services Filtered by Ville (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/services?ville=Paris",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "services"],
+              "query": [{ "key": "ville", "value": "Paris" }]
+            }
+          }
+        },
+        {
+          "name": "Search Services (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/services?search=Go",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "services"],
+              "query": [{ "key": "search", "value": "Go" }]
+            }
+          }
+        },
+        {
+          "name": "Get Service by ID (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/services/{{serviceId}}", "host": ["{{baseUrl}}"], "path": ["api", "services", "{{serviceId}}"] }
+          }
+        },
+        {
+          "name": "Error: Update Service as Non-Owner (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 403', () => pm.response.to.have.status(403));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{bobId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titre\": \"Piraté\",\n  \"categorie\": \"Informatique\",\n  \"duree_minutes\": 30,\n  \"credits\": 1,\n  \"actif\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/services/{{serviceId}}", "host": ["{{baseUrl}}"], "path": ["api", "services", "{{serviceId}}"] }
+          }
+        },
+        {
+          "name": "Update Service - Alice (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{aliceId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titre\": \"Cours de Go avancé\",\n  \"categorie\": \"Informatique\",\n  \"duree_minutes\": 90,\n  \"credits\": 3,\n  \"ville\": \"Paris\",\n  \"actif\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/services/{{serviceId}}", "host": ["{{baseUrl}}"], "path": ["api", "services", "{{serviceId}}"] }
+          }
+        },
+        {
+          "name": "Error: Get Unknown Service (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 404', () => pm.response.to.have.status(404));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/services/999999999", "host": ["{{baseUrl}}"], "path": ["api", "services", "999999999"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Exchanges",
+      "item": [
+        {
+          "name": "Error: Request Own Service (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 400', () => pm.response.to.have.status(400));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{aliceId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"service_id\": {{serviceId}}\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/exchanges", "host": ["{{baseUrl}}"], "path": ["api", "exchanges"] }
+          }
+        },
+        {
+          "name": "Create Exchange - Bob requests Alice's Service (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('status = pending', () => pm.expect(body.status).to.eql('pending'));",
+                  "pm.collectionVariables.set('exchangeId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{bobId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"service_id\": {{serviceId}}\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/exchanges", "host": ["{{baseUrl}}"], "path": ["api", "exchanges"] }
+          }
+        },
+        {
+          "name": "Error: Duplicate Reservation on Same Service (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 409', () => pm.response.to.have.status(409));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{bobId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"service_id\": {{serviceId}}\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/exchanges", "host": ["{{baseUrl}}"], "path": ["api", "exchanges"] }
+          }
+        },
+        {
+          "name": "Error: Get Exchange as Outsider (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 403', () => pm.response.to.have.status(403));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-ID", "value": "999" }],
+            "url": { "raw": "{{baseUrl}}/api/exchanges/{{exchangeId}}", "host": ["{{baseUrl}}"], "path": ["api", "exchanges", "{{exchangeId}}"] }
+          }
+        },
+        {
+          "name": "Get Exchange by ID - Owner (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-ID", "value": "{{aliceId}}" }],
+            "url": { "raw": "{{baseUrl}}/api/exchanges/{{exchangeId}}", "host": ["{{baseUrl}}"], "path": ["api", "exchanges", "{{exchangeId}}"] }
+          }
+        },
+        {
+          "name": "List My Exchanges - Bob (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-ID", "value": "{{bobId}}" }],
+            "url": { "raw": "{{baseUrl}}/api/exchanges", "host": ["{{baseUrl}}"], "path": ["api", "exchanges"] }
+          }
+        },
+        {
+          "name": "Error: Accept as Non-Owner (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 403', () => pm.response.to.have.status(403));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "X-User-ID", "value": "{{bobId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeId}}/accept",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeId}}", "accept"]
+            }
+          }
+        },
+        {
+          "name": "Accept Exchange - Alice (owner) blocks credits (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = accepted', () => pm.expect(pm.response.json().status).to.eql('accepted'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "X-User-ID", "value": "{{aliceId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeId}}/accept",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeId}}", "accept"]
+            }
+          }
+        },
+        {
+          "name": "Error: Complete as Owner Instead of Requester (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 403', () => pm.response.to.have.status(403));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "X-User-ID", "value": "{{aliceId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeId}}/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeId}}", "complete"]
+            }
+          }
+        },
+        {
+          "name": "Complete Exchange - Bob (requester) releases credits (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = completed', () => pm.expect(pm.response.json().status).to.eql('completed'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "X-User-ID", "value": "{{bobId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeId}}/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeId}}", "complete"]
+            }
+          }
+        },
+        {
+          "name": "List Exchanges Filtered by Status=completed (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('all completed', () => pm.response.json().forEach(e => pm.expect(e.status).to.eql('completed')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-ID", "value": "{{bobId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges?status=completed",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges"],
+              "query": [{ "key": "status", "value": "completed" }]
+            }
+          }
+        },
+        {
+          "name": "Create Exchange #2 - for Cancel demo (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('exchangeIdCancel', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{bobId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"service_id\": {{serviceId}}\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/exchanges", "host": ["{{baseUrl}}"], "path": ["api", "exchanges"] }
+          }
+        },
+        {
+          "name": "Accept Exchange #2 (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "X-User-ID", "value": "{{aliceId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeIdCancel}}/accept",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeIdCancel}}", "accept"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Exchange #2 - refunds requester (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = cancelled', () => pm.expect(pm.response.json().status).to.eql('cancelled'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "X-User-ID", "value": "{{bobId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeIdCancel}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeIdCancel}}", "cancel"]
+            }
+          }
+        },
+        {
+          "name": "Create Exchange #3 - for Reject demo (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('exchangeIdReject', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{bobId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"service_id\": {{serviceId}}\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/exchanges", "host": ["{{baseUrl}}"], "path": ["api", "exchanges"] }
+          }
+        },
+        {
+          "name": "Reject Exchange #3 - no credit blocked (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = rejected', () => pm.expect(pm.response.json().status).to.eql('rejected'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "X-User-ID", "value": "{{aliceId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeIdReject}}/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeIdReject}}", "reject"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "item": [
+        {
+          "name": "Error: Review a Non-Completed Exchange (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 400', () => pm.response.to.have.status(400));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{bobId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": 5\n}", "options": { "raw": { "language": "json" } } },
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeIdCancel}}/review",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeIdCancel}}", "review"]
+            }
+          }
+        },
+        {
+          "name": "Create Review on Completed Exchange (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('target is Alice', () => pm.expect(Number(body.target_id)).to.eql(Number(pm.collectionVariables.get('aliceId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{bobId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": 5,\n  \"commentaire\": \"Ponctuel et de bon conseil\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeId}}/review",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeId}}", "review"]
+            }
+          }
+        },
+        {
+          "name": "Error: Review the Same Exchange Twice (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 400', () => pm.response.to.have.status(400));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{bobId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": 4\n}", "options": { "raw": { "language": "json" } } },
+            "url": {
+              "raw": "{{baseUrl}}/api/exchanges/{{exchangeId}}/review",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "exchanges", "{{exchangeId}}", "review"]
+            }
+          }
+        },
+        {
+          "name": "Get Reviews Received - Alice (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has at least one review', () => pm.expect(pm.response.json().length).to.be.above(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{aliceId}}/reviews",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "{{aliceId}}", "reviews"]
+            }
+          }
+        },
+        {
+          "name": "Get Reviews for Service (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/services/{{serviceId}}/reviews",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "services", "{{serviceId}}", "reviews"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Statistics",
+      "item": [
+        {
+          "name": "Get Stats - Alice (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('one completed exchange', () => pm.expect(body.echanges_completes).to.be.at.least(1));",
+                  "pm.test('one review, note 5', () => { pm.expect(body.nb_avis).to.be.at.least(1); pm.expect(body.note_moyenne).to.be.above(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/{{aliceId}}/stats", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{aliceId}}", "stats"] }
+          }
+        },
+        {
+          "name": "Get Stats - Bob (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/{{bobId}}/stats", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{bobId}}", "stats"] }
+          }
+        },
+        {
+          "name": "Error: Stats for Unknown User (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('status 404', () => pm.response.to.have.status(404));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/999999999/stats", "host": ["{{baseUrl}}"], "path": ["api", "users", "999999999", "stats"] }
+          }
+        }
+      ]
+    }
+  ]
+}

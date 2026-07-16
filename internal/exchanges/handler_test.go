@@ -94,6 +94,81 @@ func TestHTTPExchangeLifecycle(t *testing.T) {
 	}
 }
 
+func TestHTTPReject(t *testing.T) {
+	handler, store := newTestApplication()
+	store.grant(1, 10)
+
+	created := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, "1")
+	var exchange Exchange
+	if err := json.NewDecoder(created.Body).Decode(&exchange); err != nil {
+		t.Fatalf("decode created exchange: %v", err)
+	}
+
+	// Only the owner may reject.
+	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/reject", "", "1"); got.Code != http.StatusForbidden {
+		t.Fatalf("reject by requester status = %d, want 403", got.Code)
+	}
+
+	rejected := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/reject", "", "2")
+	if rejected.Code != http.StatusOK {
+		t.Fatalf("reject status = %d, body = %s", rejected.Code, rejected.Body.String())
+	}
+	var result Exchange
+	if err := json.NewDecoder(rejected.Body).Decode(&result); err != nil {
+		t.Fatalf("decode rejected exchange: %v", err)
+	}
+	if result.Status != StatusRejected {
+		t.Fatalf("rejected exchange = %+v", result)
+	}
+	// No credit was blocked on a pending request, so nothing is refunded.
+	if store.balances[1] != 10 {
+		t.Fatalf("requester balance = %d, want 10 (nothing was blocked)", store.balances[1])
+	}
+}
+
+func TestHTTPCancel(t *testing.T) {
+	handler, store := newTestApplication()
+	store.grant(1, 10)
+
+	created := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, "1")
+	var exchange Exchange
+	if err := json.NewDecoder(created.Body).Decode(&exchange); err != nil {
+		t.Fatalf("decode created exchange: %v", err)
+	}
+	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/accept", "", "2"); got.Code != http.StatusOK {
+		t.Fatalf("accept status = %d", got.Code)
+	}
+	if store.balances[1] != 8 {
+		t.Fatalf("requester balance after accept = %d, want 8", store.balances[1])
+	}
+
+	// An outsider may not cancel.
+	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/cancel", "", "3"); got.Code != http.StatusForbidden {
+		t.Fatalf("cancel by outsider status = %d, want 403", got.Code)
+	}
+
+	cancelled := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/cancel", "", "1")
+	if cancelled.Code != http.StatusOK {
+		t.Fatalf("cancel status = %d, body = %s", cancelled.Code, cancelled.Body.String())
+	}
+	var result Exchange
+	if err := json.NewDecoder(cancelled.Body).Decode(&result); err != nil {
+		t.Fatalf("decode cancelled exchange: %v", err)
+	}
+	if result.Status != StatusCancelled {
+		t.Fatalf("cancelled exchange = %+v", result)
+	}
+	// The blocked credits are refunded to the requester.
+	if store.balances[1] != 10 {
+		t.Fatalf("requester balance after refund = %d, want 10", store.balances[1])
+	}
+
+	// A rejected/cancelled exchange cannot be cancelled again.
+	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/cancel", "", "1"); got.Code != http.StatusBadRequest {
+		t.Fatalf("cancel again status = %d, want 400", got.Code)
+	}
+}
+
 func TestHTTPExchangeErrors(t *testing.T) {
 	handler, store := newTestApplication()
 	store.grant(1, 1) // not enough for the 2-credit service

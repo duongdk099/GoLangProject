@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"barterswap/internal/credits"
 	"barterswap/pkg/httpapi"
 )
 
@@ -38,11 +39,9 @@ func (s *PostgresStore) Create(ctx context.Context, params CreateUserParams) (Us
 		return User{}, fmt.Errorf("insert user: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO credit_transactions (user_id, exchange_id, montant, type)
-		VALUES ($1, NULL, $2, 'earn')
-	`, user.ID, WelcomeCredits)
-	if err != nil {
+	if err := credits.Record(ctx, tx, credits.Entry{
+		UserID: user.ID, Amount: WelcomeCredits, Type: credits.TypeEarn,
+	}); err != nil {
 		return User{}, fmt.Errorf("insert welcome credits: %w", err)
 	}
 
