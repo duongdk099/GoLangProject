@@ -1,11 +1,12 @@
 # BarterSwap - API d'échange de compétences
 
 BarterSwap is a Go REST API where time credits are exchanged for services. This
-repository currently contains the common application infrastructure (Person 1:
-users, skills, middleware, PostgreSQL setup, welcome credits) and the Person 2
-scope: service advertisements, reviews, and user statistics. The exchanges and
-credit-ledger feature (Person 3) is not implemented yet; see
-[Pending Person 3 integration](#pending-person-3-integration) below.
+repository contains the common application infrastructure (Person 1: users,
+skills, middleware, PostgreSQL setup, welcome credits), the Person 2 scope
+(service advertisements, reviews, and user statistics), and the Person 3 scope
+(the exchange lifecycle and the credit ledger). See
+[Exchanges and the credit ledger](#exchanges-and-the-credit-ledger-person-3)
+for the transactional design.
 
 ## Requirements
 
@@ -68,6 +69,13 @@ requires the header, and a user may update only their own data.
 | `GET` | `/api/services/{id}` | No | Get one service |
 | `PUT` | `/api/services/{id}` | Owner | Replace a service's fields |
 | `DELETE` | `/api/services/{id}` | Owner | Delete a service |
+| `POST` | `/api/exchanges` | Yes | Request an exchange for a service |
+| `GET` | `/api/exchanges` | Yes | List your exchanges, filterable by `status` |
+| `GET` | `/api/exchanges/{id}` | Participant | Get one exchange |
+| `PUT` | `/api/exchanges/{id}/accept` | Owner | Accept a pending request (blocks the requester's credits) |
+| `PUT` | `/api/exchanges/{id}/reject` | Owner | Reject a pending request |
+| `PUT` | `/api/exchanges/{id}/complete` | Requester | Confirm completion (releases credits to the owner) |
+| `PUT` | `/api/exchanges/{id}/cancel` | Participant | Cancel; refunds the requester if already accepted |
 | `POST` | `/api/exchanges/{id}/review` | Yes | Review a completed exchange (see note below) |
 | `GET` | `/api/users/{id}/reviews` | No | Reviews received by a user |
 | `GET` | `/api/services/{id}/reviews` | No | Reviews left on a service |
@@ -159,6 +167,38 @@ curl -i -X PUT http://localhost:8080/api/services/1 \
 curl -i -X DELETE http://localhost:8080/api/services/1 -H "X-User-ID: 1"
 ```
 
+### Request and drive an exchange
+
+The requester comes from authentication; the owner and price are resolved from
+the service, never trusted from the client. A user cannot request their own
+service, must have enough credits, and a service can hold only one `pending` or
+`accepted` exchange at a time (a second request returns `409`).
+
+```bash
+# User 2 requests service 1 (owned by user 1)
+curl -i -X POST http://localhost:8080/api/exchanges \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: 2" \
+  -d '{"service_id":1}'
+
+# List your exchanges, optionally filtered by status
+curl -i "http://localhost:8080/api/exchanges" -H "X-User-ID: 2"
+curl -i "http://localhost:8080/api/exchanges?status=accepted" -H "X-User-ID: 2"
+
+# Get one exchange (participants only)
+curl -i http://localhost:8080/api/exchanges/1 -H "X-User-ID: 2"
+
+# The owner accepts (blocks the requester's credits) or rejects
+curl -i -X PUT http://localhost:8080/api/exchanges/1/accept -H "X-User-ID: 1"
+curl -i -X PUT http://localhost:8080/api/exchanges/1/reject -H "X-User-ID: 1"
+
+# The requester confirms completion (releases the credits to the owner)
+curl -i -X PUT http://localhost:8080/api/exchanges/1/complete -H "X-User-ID: 2"
+
+# Either participant can cancel; an accepted exchange refunds the requester
+curl -i -X PUT http://localhost:8080/api/exchanges/1/cancel -H "X-User-ID: 2"
+```
+
 ### Review a completed exchange
 
 Only the requester or the owner of a `completed` exchange may leave one
@@ -179,31 +219,77 @@ curl -i http://localhost:8080/api/services/1/reviews
 curl -i http://localhost:8080/api/users/1/stats
 ```
 
-## Pending Person 3 integration
+## Exchanges and the credit ledger (Person 3)
 
-Reviews and statistics depend on the exchanges feature owned by Person 3,
-which is not implemented in this repository yet. Rather than block on that
-work, the reviews and statistics packages depend on two small interfaces
-defined on the consumer side — `ExchangeLookup` in
-`internal/reviews/service.go` and `ExchangeStatsProvider` in
-`internal/stats/service.go` — matching the course's guidance to define
-interfaces where they are used rather than where they are implemented.
+The exchange lifecycle and the credit journal are implemented in
+`internal/exchanges` and `internal/credits`. `*exchanges.UseCases` satisfies the
+two consumer-side interfaces the reviews and statistics features declared —
+`reviews.ExchangeLookup` (`GetExchange`) and `stats.ExchangeStatsProvider`
+(`CountCompletedExchanges`) — so `cmd/server/main.go` wires the real store into
+both consumers with no change to their code, exactly as the interface contracts
+intended.
 
-`internal/exchanges/pending.go` provides a temporary placeholder,
-`exchanges.PendingIntegration`, that satisfies both interfaces without any
-business logic: `GetExchange` always returns "not found" and
-`CountCompletedExchanges` always returns `0`. This keeps the application
-compiling and every other Person 2 endpoint fully functional. Once Person 3's
-real exchanges store exists (as `internal/exchanges`, replacing the
-placeholder file), update the two lines in `cmd/server/main.go` that build
-`exchanges.PendingIntegration{}` to use it instead; no other change is
-required because both consumers depend only on the interfaces.
+### Lifecycle and who does what
 
-The `reviews` table already stores `exchange_id` without a foreign key (same
-pattern as `credit_transactions`), plus a denormalized `service_id` snapshot
-captured from the exchange at review creation time so that
-`GET /api/services/{id}/reviews` does not need a live join against the
-not-yet-existing `exchanges` table.
+```text
+pending -> accepted -> completed
+   |          |
+   v          v
+rejected   cancelled   (a pending exchange can also be cancelled)
+```
+
+- **Create** (`POST /api/exchanges`): the requester is the authenticated user;
+  the owner and price come from the service, never the client. A user cannot
+  request their own service, the service must be active, the requester must
+  have enough credits, and a service can hold at most one `pending` or
+  `accepted` exchange — a second request returns `409`.
+- **Accept** (owner only): moves `pending -> accepted` and **blocks** the
+  service price from the requester as a `spend` entry, inside one transaction.
+- **Reject** (owner only): moves `pending -> rejected`. No credit was blocked,
+  so nothing is refunded.
+- **Complete** (**requester** only): moves `accepted -> completed` and
+  **releases** the blocked credits to the owner as an `earn` entry. The team's
+  decision is that the requester — the party who received the service —
+  confirms completion, since that is what releases their own blocked credits
+  and prevents an owner from crediting themselves prematurely.
+- **Cancel** (either participant): a `pending` exchange is simply cancelled; an
+  `accepted` exchange is cancelled **and refunds** the requester as a `refund`
+  entry.
+
+### Transactional guarantees
+
+- Every status change that moves credits (`accept`, `complete`, cancellation of
+  an accepted exchange) runs in a single `database/sql` transaction that locks
+  the exchange row `FOR UPDATE`, re-checks its state (and the requester's
+  balance on `accept`), records the credit movement, and updates the status.
+  The status change and its credit movement commit or roll back together.
+- No Go mutex is used. Concurrency is handled entirely in the database:
+  - A partial unique index (`idx_exchanges_active_service`) makes two
+    simultaneous requests for one service race at the database; the losing
+    `INSERT` fails and is surfaced as `409 Conflict`.
+  - A partial unique index on `credit_transactions (exchange_id, type)`
+    guarantees a debit, earning, or refund can never be recorded twice for the
+    same exchange and operation.
+  - Status guards (`WHERE ... AND status = <expected>`) plus the row lock mean a
+    repeated transition is rejected and never transfers credits a second time.
+
+### Credit journal
+
+`internal/credits` is a small library (not an HTTP feature) that owns the
+append-only journal. A balance is the sum of a user's entries, never a mutable
+column. Its `Record`/`Balance` helpers accept an `Execer` satisfied by both
+`*sql.DB` and `*sql.Tx`, so the exchange store records movements **inside** the
+transaction that drives the status change. The welcome credit is the same
+journal contract: an `earn` entry with a `NULL` exchange ID (Person 1 records it
+when a user is created). The internal `credits_cost` column on `exchanges`
+snapshots the service price at request time, so the amount blocked on
+acceptance is exactly the amount released on completion or refunded on
+cancellation even if the provider later edits the price.
+
+The `reviews` table stores `exchange_id` without a foreign key (same pattern as
+`credit_transactions`), plus a denormalized `service_id` snapshot captured from
+the exchange at review creation time, so `GET /api/services/{id}/reviews` does
+not need a live join against `exchanges`.
 
 ## Error format
 
@@ -267,7 +353,8 @@ barterswap/
 │   ├── services/     # Person 2: service advertisements
 │   ├── reviews/      # Person 2: reviews on completed exchanges
 │   ├── stats/        # Person 2: aggregated user dashboard
-│   └── exchanges/    # Person 3 (pending): placeholder integration
+│   ├── exchanges/    # Person 3: exchange lifecycle (transactional)
+│   └── credits/      # Person 3: append-only credit journal (library)
 ├── pkg/
 │   └── httpapi/      # reusable HTTP plumbing (see below)
 ├── go.mod / go.sum
@@ -300,6 +387,8 @@ HTTP request
 | Services | `internal/services` | `model.go` | `service.go` | `store_postgres.go` | `handler.go` |
 | Reviews | `internal/reviews` | `model.go` | `service.go` | `store_postgres.go` | `handler.go` |
 | Statistics | `internal/stats` | (in `service.go`) | `service.go` | `store_postgres.go` | `handler.go` |
+| Exchanges | `internal/exchanges` | `model.go` | `service.go` | `store_postgres.go` | `handler.go` |
+| Credits | `internal/credits` | `model.go` | `service.go` | `store_postgres.go` | (library, no HTTP) |
 
 ### Cross-feature dependencies
 
@@ -318,9 +407,12 @@ file:
   is satisfied by `*services.UseCases`; `internal/reviews` imports
   `internal/services` for the `Service` type only (one-directional, no cycle).
 - `reviews.ExchangeLookup` and `stats.ExchangeStatsProvider` are satisfied by
-  `internal/exchanges` today (a placeholder) and will be satisfied by Person
-  3's real exchanges store later — see
-  [Pending Person 3 integration](#pending-person-3-integration).
+  `*exchanges.UseCases` (`internal/exchanges`), so the reviews and statistics
+  features consume real exchange data — see
+  [Exchanges and the credit ledger](#exchanges-and-the-credit-ledger-person-3).
+- `exchanges.ServiceLookup` (`Get(ctx, id) (services.Service, error)`) is
+  satisfied by `*services.UseCases`, and `exchanges.RequesterChecker`
+  (`UserExists`) by `*users.Service`, both declared on the consumer side.
 
 Only `cmd/server/main.go` imports every feature package to wire them
 together; no feature package imports another feature's concrete types except
@@ -336,9 +428,9 @@ Useful integration contracts for the other team members:
   cross-feature validation.
 - Call `services.UseCases.Get` to load a service, its owner, active status,
   and credit cost when validating an exchange request.
-- Implement `reviews.ExchangeLookup` and `stats.ExchangeStatsProvider` in the
-  new `internal/exchanges` package, and wire them in `cmd/server/main.go` in
-  place of `exchanges.PendingIntegration`.
+- `internal/exchanges` implements `reviews.ExchangeLookup` and
+  `stats.ExchangeStatsProvider` on `*exchanges.UseCases`, wired in
+  `cmd/server/main.go`.
 - Reuse `httpapi.WriteJSON`, `httpapi.DecodeJSON`, `httpapi.WriteAPIError`,
   `httpapi.PathID`, `httpapi.RequireAuthenticatedUser`, and the sentinel
   errors for consistent HTTP responses.
