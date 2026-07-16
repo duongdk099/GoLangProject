@@ -1,0 +1,6 @@
+.env
+coverage
+coverage.out
+barterswap
+barterswap.exe
+tmp/
