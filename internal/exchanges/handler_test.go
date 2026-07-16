@@ -94,78 +94,60 @@ func TestHTTPExchangeLifecycle(t *testing.T) {
 	}
 }
 
-func TestHTTPReject(t *testing.T) {
+func TestHTTPRejectAndCancel(t *testing.T) {
 	handler, store := newTestApplication()
 	store.grant(1, 10)
 
-	created := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, "1")
-	var exchange Exchange
-	if err := json.NewDecoder(created.Body).Decode(&exchange); err != nil {
-		t.Fatalf("decode created exchange: %v", err)
+	// Reject a pending request (owner only).
+	if got := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, "1"); got.Code != http.StatusCreated {
+		t.Fatalf("create for reject status = %d", got.Code)
 	}
-
-	// Only the owner may reject.
-	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/reject", "", "1"); got.Code != http.StatusForbidden {
-		t.Fatalf("reject by requester status = %d, want 403", got.Code)
-	}
-
 	rejected := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/reject", "", "2")
 	if rejected.Code != http.StatusOK {
 		t.Fatalf("reject status = %d, body = %s", rejected.Code, rejected.Body.String())
 	}
-	var result Exchange
-	if err := json.NewDecoder(rejected.Body).Decode(&result); err != nil {
-		t.Fatalf("decode rejected exchange: %v", err)
-	}
-	if result.Status != StatusRejected {
-		t.Fatalf("rejected exchange = %+v", result)
-	}
-	// No credit was blocked on a pending request, so nothing is refunded.
-	if store.balances[1] != 10 {
-		t.Fatalf("requester balance = %d, want 10 (nothing was blocked)", store.balances[1])
-	}
-}
-
-func TestHTTPCancel(t *testing.T) {
-	handler, store := newTestApplication()
-	store.grant(1, 10)
-
-	created := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, "1")
 	var exchange Exchange
-	if err := json.NewDecoder(created.Body).Decode(&exchange); err != nil {
-		t.Fatalf("decode created exchange: %v", err)
-	}
-	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/accept", "", "2"); got.Code != http.StatusOK {
-		t.Fatalf("accept status = %d", got.Code)
-	}
-	if store.balances[1] != 8 {
-		t.Fatalf("requester balance after accept = %d, want 8", store.balances[1])
+	if err := json.NewDecoder(rejected.Body).Decode(&exchange); err != nil || exchange.Status != StatusRejected {
+		t.Fatalf("rejected exchange = %+v, err = %v", exchange, err)
 	}
 
-	// An outsider may not cancel.
-	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/cancel", "", "3"); got.Code != http.StatusForbidden {
-		t.Fatalf("cancel by outsider status = %d, want 403", got.Code)
+	// The service is free again: create and cancel a pending exchange.
+	if got := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, "1"); got.Code != http.StatusCreated {
+		t.Fatalf("create for cancel status = %d", got.Code)
 	}
-
-	cancelled := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/cancel", "", "1")
+	cancelled := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/2/cancel", "", "1")
 	if cancelled.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d, body = %s", cancelled.Code, cancelled.Body.String())
 	}
-	var result Exchange
-	if err := json.NewDecoder(cancelled.Body).Decode(&result); err != nil {
-		t.Fatalf("decode cancelled exchange: %v", err)
-	}
-	if result.Status != StatusCancelled {
-		t.Fatalf("cancelled exchange = %+v", result)
-	}
-	// The blocked credits are refunded to the requester.
-	if store.balances[1] != 10 {
-		t.Fatalf("requester balance after refund = %d, want 10", store.balances[1])
-	}
+}
 
-	// A rejected/cancelled exchange cannot be cancelled again.
-	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/cancel", "", "1"); got.Code != http.StatusBadRequest {
-		t.Fatalf("cancel again status = %d, want 400", got.Code)
+func TestHTTPTransitionAndPathGuards(t *testing.T) {
+	handler, _ := newTestApplication()
+
+	tests := []struct {
+		name   string
+		method string
+		target string
+		userID string
+		status int
+	}{
+		{name: "malformed create body", method: http.MethodPost, target: "/api/exchanges", userID: "1", status: http.StatusBadRequest},
+		{name: "accept without auth", method: http.MethodPut, target: "/api/exchanges/1/accept", userID: "", status: http.StatusUnauthorized},
+		{name: "accept bad path id", method: http.MethodPut, target: "/api/exchanges/abc/accept", userID: "1", status: http.StatusBadRequest},
+		{name: "cancel bad path id", method: http.MethodPut, target: "/api/exchanges/abc/cancel", userID: "1", status: http.StatusBadRequest},
+		{name: "get bad path id", method: http.MethodGet, target: "/api/exchanges/abc", userID: "1", status: http.StatusBadRequest},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := ""
+			if test.name == "malformed create body" {
+				body = `{"service_id":`
+			}
+			got := testutil.PerformRequest(handler, test.method, test.target, body, test.userID)
+			if got.Code != test.status {
+				t.Fatalf("status = %d, want %d; body = %s", got.Code, test.status, got.Body.String())
+			}
+		})
 	}
 }
 

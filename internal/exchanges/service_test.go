@@ -14,10 +14,11 @@ import (
 // PostgreSQL store (authorization, status guards, credit movements) so the
 // business logic can be exercised without a database.
 type memoryStore struct {
-	nextID    int
-	exchanges map[int]stored
-	balances  map[int]int
-	ledger    []credits.Entry
+	nextID     int
+	exchanges  map[int]stored
+	balances   map[int]int
+	ledger     []credits.Entry
+	balanceErr error
 }
 
 type stored struct {
@@ -80,6 +81,9 @@ func (s *memoryStore) List(_ context.Context, filter Filter) ([]Exchange, error)
 }
 
 func (s *memoryStore) Balance(_ context.Context, userID int) (int, error) {
+	if s.balanceErr != nil {
+		return 0, s.balanceErr
+	}
 	return s.balances[userID], nil
 }
 
@@ -182,9 +186,13 @@ func (s *memoryStore) countLedger(exchangeID int, entryType string) int {
 
 type stubServices struct {
 	services map[int]services.Service
+	err      error
 }
 
 func (s stubServices) Get(_ context.Context, serviceID int) (services.Service, error) {
+	if s.err != nil {
+		return services.Service{}, s.err
+	}
 	service, ok := s.services[serviceID]
 	if !ok {
 		return services.Service{}, httpapi.ErrNotFound
@@ -194,9 +202,13 @@ func (s stubServices) Get(_ context.Context, serviceID int) (services.Service, e
 
 type stubUsers struct {
 	existing map[int]bool
+	err      error
 }
 
 func (s stubUsers) UserExists(_ context.Context, userID int) (bool, error) {
+	if s.err != nil {
+		return false, s.err
+	}
 	return s.existing[userID], nil
 }
 

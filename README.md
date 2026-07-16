@@ -198,14 +198,17 @@ du run par défaut :
 ```bash
 RUN_POSTGRES_INTEGRATION=1 \
 TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/barterswap?sslmode=disable' \
-go test ./... -run Integration -v
+go test ./... -run Integration -p 1 -v
 ```
 
-Couverture : ~50% en run par défaut (les stores Postgres, testés
-uniquement via l'intégration ci-dessus, comptent pour 0% sinon — convention
-volontaire dans tout le repo). En combinant les deux suites
-(`go test ./... -coverprofile=cover.out` avec `RUN_POSTGRES_INTEGRATION=1`),
-la couverture globale monte à **~72%**, au-dessus du seuil de 60% demandé.
+Run the integration packages serially with `-p 1`: every package's integration
+test applies the schema, and PostgreSQL `CREATE TABLE IF NOT EXISTS` is not safe
+under concurrent execution (parallel migrations collide on `pg_type`). Each test
+creates a small number of temporary rows and deletes them before finishing. Use
+a development database, never a production database.
+
+See [`COVERAGE.md`](COVERAGE.md) for a per-package coverage report and an
+explanation of exactly which statements are not covered and why.
 
 ## Architecture
 
