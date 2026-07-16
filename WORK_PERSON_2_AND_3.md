@@ -6,50 +6,64 @@ This document defines the work owned by **Person 2** and **Person 3**.
 middlewares, users, and skills.** Coordinate shared types and function signatures
 with Person 1 before implementing handlers.
 
+## Repository structure
+
+The project follows the `cmd/` + `internal/` + `pkg/` layout from the course
+(Module 8): a thin entry point, one Go package per feature, and a
+project-agnostic, reusable HTTP package. See the "Architecture and
+integration" section of `README.md` for the full tree and the interface
+contracts each feature exposes to the others.
+
+```text
+cmd/server/main.go       # entry point, wires every feature together
+internal/config          # environment configuration
+internal/database        # PostgreSQL connection + embedded schema.sql
+internal/testutil        # shared HTTP test helper (PerformRequest)
+internal/users           # Person 1: accounts, skills, welcome credits
+internal/services        # Person 2: service advertisements
+internal/reviews         # Person 2: reviews on completed exchanges
+internal/stats           # Person 2: aggregated user dashboard
+internal/exchanges       # Person 3: exchange lifecycle and credit ledger
+pkg/httpapi              # reusable HTTP plumbing: errors, JSON, middleware, auth, routing
+```
+
 ## Rules that apply to both people
 
-- Use Go and a single Go package. Files may be separated, but do not create
-  internal sub-packages.
+- Use Go and the repository's `cmd/` + `internal/` + `pkg/` layout: one
+  package per feature under `internal/`, with model/service/store/handler
+  responsibilities in their own files inside that package (see
+  `internal/users` for the reference layout).
 - Use `net/http`, `encoding/json`, `context`, and `database/sql` from the standard
   library.
 - The selected SQL driver is the only allowed external dependency.
 - Do not use an ORM, Gin, Echo, Chi, or a mutex.
-- Read the authenticated user from the `X-User-ID` header through the helper or
-  middleware supplied by Person 1.
+- Read the authenticated user via `httpapi.AuthenticatedUserID` /
+  `httpapi.RequireAuthenticatedUser` (`pkg/httpapi`), set by the
+  `httpapi.Authentication` middleware supplied by Person 1.
 - HTTP handlers must only parse the request, call business logic, and write the
   response. Put validations and business rules in service functions.
 - Put SQL operations in store functions and pass `context.Context` to database
   calls.
-- Return consistent JSON errors and correct HTTP status codes.
+- Return consistent JSON errors and correct HTTP status codes using
+  `httpapi.WriteAPIError` and the sentinel errors in `pkg/httpapi`.
+- Cross-feature dependencies are small interfaces declared on the consumer
+  side (see "Cross-feature dependencies" in `README.md`), never a direct
+  import of another feature's concrete store or service type.
 - Write table-driven unit tests and API tests with `httptest` for your own work.
 - Run `gofmt`, `go vet`, and `go test -cover` before merging.
 
 ## Person 2 - Services, reviews, and statistics
 
-### Suggested files
+### Actual layout (implemented)
 
 ```text
-services_model.go
-services_handler.go
-services_service.go
-services_store.go
-services_test.go
-services_handler_test.go
-
-reviews_model.go
-reviews_handler.go
-reviews_service.go
-reviews_store.go
-reviews_test.go
-
-stats_handler.go
-stats_service.go
-stats_store.go
-stats_test.go
+internal/services/{model,service,store_postgres,handler}.go (+ tests)
+internal/reviews/{model,service,store_postgres,handler}.go (+ tests)
+internal/stats/{service,store_postgres,handler}.go (+ tests)
 ```
 
-The names are suggestions. Keep the handler, business logic, and storage
-responsibilities separated even if different names are chosen.
+Each is its own package. Keep the handler, business logic, and storage
+responsibilities separated in their own files as already done.
 
 ### A. Service advertisements
 
@@ -206,21 +220,34 @@ From Person 3:
 This is the most transaction-sensitive part of the application. Status changes
 and credit updates must be executed atomically with SQL transactions.
 
-### Suggested files
+### Actual layout (implemented so far)
+
+This feature lives in `internal/exchanges`, following the same layout as
+`internal/users`, `internal/services`, `internal/reviews`, and
+`internal/stats`. A placeholder currently sits at
+`internal/exchanges/pending.go` (`exchanges.PendingIntegration`) — replace it
+with the real implementation below:
 
 ```text
-exchanges_model.go
-exchanges_handler.go
-exchanges_service.go
-exchanges_store.go
-exchanges_test.go
-exchanges_handler_test.go
+internal/exchanges/model.go
+internal/exchanges/handler.go
+internal/exchanges/service.go
+internal/exchanges/store_postgres.go
+internal/exchanges/service_test.go
+internal/exchanges/handler_test.go
+internal/exchanges/store_postgres_integration_test.go
 
-credits_model.go
-credits_service.go
-credits_store.go
-credits_test.go
+internal/credits/model.go
+internal/credits/service.go
+internal/credits/store_postgres.go
+internal/credits/service_test.go
 ```
+
+The concrete type in `internal/exchanges` must keep satisfying
+`reviews.ExchangeLookup` (`GetExchange`) and `stats.ExchangeStatsProvider`
+(`CountCompletedExchanges`) — the same two methods `PendingIntegration`
+implements today — so `cmd/server/main.go` only needs its two
+`exchanges.PendingIntegration{}` lines swapped for the real store.
 
 ### A. Exchange endpoints
 
