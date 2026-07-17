@@ -1,4 +1,3 @@
-// Package users owns accounts, skills, and the welcome-credit journal entry.
 package users
 
 type User struct {

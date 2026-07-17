@@ -17,8 +17,6 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// TestRunFailsOnUnreachableDatabase covers the database-open error branch of
-// run without needing a database: the address is unreachable and fails fast.
 func TestRunFailsOnUnreachableDatabase(t *testing.T) {
 	cfg := config.Config{
 		Address:      "127.0.0.1:0",
@@ -32,9 +30,6 @@ func TestRunFailsOnUnreachableDatabase(t *testing.T) {
 	}
 }
 
-// TestRunServesAndShutsDown starts the real server against the integration
-// database, confirms it answers /healthz, then cancels the context and checks
-// that run returns after a graceful shutdown.
 func TestRunServesAndShutsDown(t *testing.T) {
 	if os.Getenv("RUN_POSTGRES_INTEGRATION") != "1" {
 		t.Skip("set RUN_POSTGRES_INTEGRATION=1 to run the server integration test")
@@ -63,7 +58,7 @@ func TestRunServesAndShutsDown(t *testing.T) {
 		t.Fatalf("server did not become healthy at %s", healthURL)
 	}
 
-	cancel() // request shutdown
+	cancel()
 	select {
 	case err := <-runErr:
 		if err != nil {
@@ -74,9 +69,6 @@ func TestRunServesAndShutsDown(t *testing.T) {
 	}
 }
 
-// freeAddress reserves a free localhost port and returns host:port. There is a
-// small window between closing the listener and the server binding it, which is
-// acceptable for a local test.
 func freeAddress(t *testing.T) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

@@ -8,7 +8,7 @@ journal de crédits (Person 3).
 
 ## Prérequis
 
-- Go 1.22 ou supérieur
+- Go 1.26 ou supérieur
 - PostgreSQL
 - Docker Compose (optionnel, le plus rapide pour la base locale)
 

@@ -7,8 +7,6 @@ import (
 	"barterswap/pkg/httpapi"
 )
 
-// UseCasesInterface is the behaviour the handler needs, declared so the HTTP
-// layer can be tested against a lightweight double.
 type UseCasesInterface interface {
 	Create(ctx context.Context, requesterID int, request CreateRequest) (Exchange, error)
 	List(ctx context.Context, userID int, status string) ([]Exchange, error)
@@ -97,8 +95,6 @@ func (h *Handler) cancel(w http.ResponseWriter, r *http.Request) {
 	h.runTransition(w, r, h.exchanges.Cancel)
 }
 
-// runTransition applies one lifecycle action that takes the authenticated
-// actor and the path ID and returns the updated exchange.
 func (h *Handler) runTransition(w http.ResponseWriter, r *http.Request, action func(context.Context, int, int) (Exchange, error)) {
 	actorID, exchangeID, ok := h.authAndID(w, r)
 	if !ok {

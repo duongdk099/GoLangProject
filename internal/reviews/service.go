@@ -10,7 +10,6 @@ import (
 	"barterswap/pkg/httpapi"
 )
 
-// Store persists reviews.
 type Store interface {
 	Create(context.Context, CreateParams) (Review, error)
 	ExistsForAuthor(ctx context.Context, exchangeID, authorID int) (bool, error)
@@ -18,16 +17,10 @@ type Store interface {
 	ListByService(ctx context.Context, serviceID int) ([]Review, error)
 }
 
-// ExchangeLookup is the contract this feature needs from the exchanges
-// feature (owned by Person 3). It is defined here, on the consumer side, so
-// Person 3's store can satisfy it without either feature importing the
-// other's implementation details.
 type ExchangeLookup interface {
 	GetExchange(ctx context.Context, exchangeID int) (ExchangeSummary, error)
 }
 
-// ServiceExistenceChecker is the slice of services.UseCases this feature
-// needs to validate GET /api/services/{id}/reviews.
 type ServiceExistenceChecker interface {
 	Get(ctx context.Context, serviceID int) (services.Service, error)
 }

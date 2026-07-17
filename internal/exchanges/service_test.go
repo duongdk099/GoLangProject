@@ -10,9 +10,6 @@ import (
 	"barterswap/pkg/httpapi"
 )
 
-// memoryStore is an in-memory Store that mirrors the transactional rules of the
-// PostgreSQL store (authorization, status guards, credit movements) so the
-// business logic can be exercised without a database.
 type memoryStore struct {
 	nextID     int
 	exchanges  map[int]stored
@@ -30,7 +27,6 @@ func newMemoryStore() *memoryStore {
 	return &memoryStore{nextID: 1, exchanges: make(map[int]stored), balances: make(map[int]int)}
 }
 
-// grant seeds a user's balance, standing in for the welcome-credit journal.
 func (s *memoryStore) grant(userID, amount int) { s.balances[userID] += amount }
 
 func (s *memoryStore) record(entry credits.Entry) {
@@ -172,8 +168,6 @@ func (s *memoryStore) setStatus(exchangeID int, status string) Exchange {
 	return exchange.Exchange
 }
 
-// countLedger reports how many journal entries of a type target one exchange,
-// used to assert a credit movement happens exactly once.
 func (s *memoryStore) countLedger(exchangeID int, entryType string) int {
 	count := 0
 	for _, entry := range s.ledger {
@@ -212,8 +206,6 @@ func (s stubUsers) UserExists(_ context.Context, userID int) (bool, error) {
 	return s.existing[userID], nil
 }
 
-// fixture wires a UseCases over a memory store with one service (id 1) owned by
-// user 2, priced at 2 credits, and users 1 (requester) and 2 (owner) existing.
 func fixture(t *testing.T) (*UseCases, *memoryStore) {
 	t.Helper()
 	store := newMemoryStore()
@@ -248,7 +240,7 @@ func TestCreateRejectsOwnService(t *testing.T) {
 
 func TestCreateRejectsInsufficientCredits(t *testing.T) {
 	useCases, store := fixture(t)
-	store.grant(1, 1) // service costs 2
+	store.grant(1, 1)
 
 	if _, err := useCases.Create(context.Background(), 1, CreateRequest{ServiceID: 1}); !errors.Is(err, httpapi.ErrValidation) {
 		t.Fatalf("Create(insufficient) error = %v, want validation", err)
@@ -280,7 +272,6 @@ func TestCreateConflictWhenAlreadyReserved(t *testing.T) {
 	}
 }
 
-// existingUser marks a user as existing on the stub wired into useCases.
 func (s *memoryStore) existingUser(useCases *UseCases, userID int) {
 	useCases.users.(stubUsers).existing[userID] = true
 }
@@ -302,7 +293,6 @@ func TestAcceptOnlyOwnerAndDebitsOnce(t *testing.T) {
 		t.Fatalf("requester balance = %d, want 8", store.balances[1])
 	}
 
-	// Accepting again must not debit a second time.
 	if _, err := useCases.Accept(context.Background(), 2, created.ID); !errors.Is(err, httpapi.ErrValidation) {
 		t.Fatalf("Accept(again) error = %v, want validation", err)
 	}
@@ -319,7 +309,6 @@ func TestCompleteCreditsOwnerOnce(t *testing.T) {
 	store.grant(1, 10)
 	created, _ := useCases.Create(context.Background(), 1, CreateRequest{ServiceID: 1})
 
-	// Cannot complete a pending exchange.
 	if _, err := useCases.Complete(context.Background(), 1, created.ID); !errors.Is(err, httpapi.ErrValidation) {
 		t.Fatalf("Complete(pending) error = %v, want validation", err)
 	}
@@ -328,7 +317,6 @@ func TestCompleteCreditsOwnerOnce(t *testing.T) {
 		t.Fatalf("Accept() error = %v", err)
 	}
 
-	// The owner cannot confirm completion; only the requester can.
 	if _, err := useCases.Complete(context.Background(), 2, created.ID); !errors.Is(err, httpapi.ErrForbidden) {
 		t.Fatalf("Complete(owner) error = %v, want forbidden", err)
 	}
@@ -388,8 +376,7 @@ func TestRejectPendingDoesNotRefund(t *testing.T) {
 	if err != nil || rejected.Status != StatusRejected {
 		t.Fatalf("Reject() = %+v, err = %v", rejected, err)
 	}
-	// No credit was blocked, so the requester keeps the full balance and no
-	// refund entry exists.
+
 	if store.balances[1] != 10 {
 		t.Fatalf("requester balance = %d, want 10", store.balances[1])
 	}
@@ -437,7 +424,6 @@ func TestListFiltersByUserAndStatus(t *testing.T) {
 		t.Fatalf("List(status=pending) = %+v, err = %v", pending, err)
 	}
 
-	// A user not involved sees nothing.
 	outsider, err := useCases.List(context.Background(), 3, "")
 	if err != nil || len(outsider) != 0 {
 		t.Fatalf("List(outsider) = %+v, err = %v", outsider, err)

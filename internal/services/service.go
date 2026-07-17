@@ -9,7 +9,6 @@ import (
 	"barterswap/pkg/httpapi"
 )
 
-// Store persists service advertisements.
 type Store interface {
 	Create(context.Context, CreateParams) (Service, error)
 	GetByID(context.Context, int) (Service, error)
@@ -18,10 +17,6 @@ type Store interface {
 	List(context.Context, Filter) ([]Service, error)
 }
 
-// SkillChecker is the slice of users.Service that this feature depends on;
-// it is defined here, on the consumer side, per the interface guidance in
-// the course. Declaring it with basic types only (no users.* type) keeps
-// this package free of an import on internal/users.
 type SkillChecker interface {
 	UserHasSkill(ctx context.Context, userID int, name string) (bool, error)
 }

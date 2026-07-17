@@ -12,7 +12,7 @@ import (
 type memoryStore struct {
 	nextID  int
 	reviews map[int]Review
-	service map[int]int // review ID -> service ID
+	service map[int]int
 }
 
 func newMemoryStore() *memoryStore {

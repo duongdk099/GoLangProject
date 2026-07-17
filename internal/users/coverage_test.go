@@ -13,9 +13,6 @@ import (
 
 var errBoom = errors.New("boom")
 
-// errStore embeds the in-memory store and lets a test inject an error into any
-// single method, so the service's dependency-error branches can be driven
-// without a database.
 type errStore struct {
 	*memoryStore
 	existsErr        error
@@ -75,7 +72,6 @@ func TestServiceUpdateValidatesProfile(t *testing.T) {
 	user := seedUser(backing, "Alice")
 	service := NewService(backing)
 
-	// The owner is authorized, so validation runs and rejects the blank pseudo.
 	if _, err := service.Update(context.Background(), user.ID, user.ID, UpdateUserRequest{Pseudo: "   "}); !errors.Is(err, httpapi.ErrValidation) {
 		t.Fatalf("Update(blank pseudo) error = %v, want validation", err)
 	}
@@ -96,8 +92,6 @@ func TestServiceUpdatePropagatesStoreErrors(t *testing.T) {
 	}
 }
 
-// TestServiceGetAndUpdateNormalizeNilSkills covers the nil-to-empty skill slice
-// normalization in Get and Update for a user that has no skills recorded.
 func TestServiceGetAndUpdateNormalizeNilSkills(t *testing.T) {
 	backing := newMemoryStore()
 	user := seedUser(backing, "Alice")
@@ -186,7 +180,7 @@ func TestServiceUserExistsAndHasSkillDelegateErrors(t *testing.T) {
 	if _, err := service.UserExists(context.Background(), user.ID); !errors.Is(err, errBoom) {
 		t.Fatalf("UserExists(error) = %v, want boom", err)
 	}
-	// Non-positive id short-circuits before touching the store.
+
 	if exists, err := service.UserExists(context.Background(), 0); err != nil || exists {
 		t.Fatalf("UserExists(0) = %v, %v", exists, err)
 	}
@@ -198,8 +192,6 @@ func TestServiceUserExistsAndHasSkillDelegateErrors(t *testing.T) {
 	}
 }
 
-// TestHandlerErrorPaths drives the handler branches not reached by the happy-path
-// lifecycle test: invalid path ids, missing authentication, and malformed bodies.
 func TestHandlerErrorPaths(t *testing.T) {
 	tests := []struct {
 		name   string

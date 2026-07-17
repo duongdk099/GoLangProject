@@ -12,16 +12,12 @@ import (
 
 var errBoom = errors.New("boom")
 
-// errSkillChecker always fails the skill lookup, exercising the
-// dependency-error return branches of Create and Update.
 type errSkillChecker struct{ err error }
 
 func (c errSkillChecker) UserHasSkill(context.Context, int, string) (bool, error) {
 	return false, c.err
 }
 
-// listResultStore lets a test replace only List while inheriting every other
-// method from the in-memory store.
 type listResultStore struct {
 	*memoryStore
 	list []Service
@@ -52,8 +48,6 @@ func TestCreatePropagatesSkillCheckError(t *testing.T) {
 func TestUpdateBranches(t *testing.T) {
 	ctx := context.Background()
 
-	// Delete and Update on a missing service surface the not-found from the
-	// inner Get lookup they both perform first.
 	if err := NewUseCases(newMemoryStore(), newStubSkillChecker()).Delete(ctx, 1, 42); !errors.Is(err, httpapi.ErrNotFound) {
 		t.Fatalf("Delete(missing) error = %v, want not found", err)
 	}
@@ -63,7 +57,6 @@ func TestUpdateBranches(t *testing.T) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
 	}
 
-	// A validation failure inside Update is returned before any skill re-check.
 	store := newMemoryStore()
 	seeded, _ := store.Create(ctx, CreateParams{ProviderID: 1, Titre: "T", Categorie: "Informatique", DureeMinutes: 30, Credits: 1})
 	useCases := NewUseCases(store, newStubSkillChecker())
@@ -73,14 +66,12 @@ func TestUpdateBranches(t *testing.T) {
 		t.Fatalf("Update(invalid fields) error = %v, want validation", err)
 	}
 
-	// Changing the category to a skill the owner lacks fails the re-check.
 	if _, err := useCases.Update(ctx, 1, seeded.ID, UpdateRequest{
 		Titre: "T", Categorie: "Cuisine", DureeMinutes: 30, Credits: 1,
 	}); !errors.Is(err, httpapi.ErrValidation) {
 		t.Fatalf("Update(missing skill) error = %v, want validation", err)
 	}
 
-	// The re-check propagates a dependency error from the skill checker.
 	errStore := newMemoryStore()
 	errSeeded, _ := errStore.Create(ctx, CreateParams{ProviderID: 1, Titre: "T", Categorie: "Informatique", DureeMinutes: 30, Credits: 1})
 	errUseCases := NewUseCases(errStore, errSkillChecker{err: errBoom})

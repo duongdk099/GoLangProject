@@ -49,8 +49,6 @@ func TestSignedMontant(t *testing.T) {
 	}
 }
 
-// fakeExec captures the last INSERT and can simulate a unique violation. It
-// only implements ExecContext because Record never calls QueryRowContext.
 type fakeExec struct {
 	lastArgs   []any
 	failUnique bool
@@ -83,7 +81,7 @@ func TestRecord(t *testing.T) {
 	if err := Record(context.Background(), exec, Entry{UserID: 7, ExchangeID: 3, Amount: 2, Type: TypeSpend}); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
-	// user_id, exchange_id, montant, type
+
 	if got := exec.lastArgs[2]; got != -2 {
 		t.Fatalf("recorded montant = %v, want -2", got)
 	}
@@ -119,8 +117,6 @@ func TestRecordDuplicateIsConflict(t *testing.T) {
 	}
 }
 
-// failingExec returns a plain error (no SQLState), exercising Record's general
-// error branch and isUniqueViolation's non-driver-error path.
 type failingExec struct{}
 
 func (failingExec) ExecContext(_ context.Context, _ string, _ ...any) (sql.Result, error) {
@@ -136,7 +132,7 @@ func TestRecordGeneralErrorIsWrapped(t *testing.T) {
 	if err == nil {
 		t.Fatal("Record() expected an error")
 	}
-	// It is neither a validation nor a conflict: it is an unexpected DB error.
+
 	if errors.Is(err, httpapi.ErrValidation) || errors.Is(err, httpapi.ErrConflict) {
 		t.Fatalf("Record() error = %v, want a plain wrapped error", err)
 	}

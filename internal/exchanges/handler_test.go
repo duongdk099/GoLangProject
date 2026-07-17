@@ -12,9 +12,6 @@ import (
 	"barterswap/pkg/httpapi"
 )
 
-// newTestApplication wires the exchange handler over a memory store with a
-// service (id 1) owned by user 2 priced at 2 credits, and users 1, 2, and 3
-// existing. The returned store lets a test seed credit balances.
 func newTestApplication() (http.Handler, *memoryStore) {
 	store := newMemoryStore()
 	svc := stubServices{services: map[int]services.Service{
@@ -29,9 +26,8 @@ func newTestApplication() (http.Handler, *memoryStore) {
 func TestHTTPExchangeLifecycle(t *testing.T) {
 	handler, store := newTestApplication()
 	store.grant(1, 10)
-	store.grant(3, 10) // a second candidate requester, funded so the 409 path is reached
+	store.grant(3, 10)
 
-	// Missing authentication.
 	if got := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, ""); got.Code != http.StatusUnauthorized {
 		t.Fatalf("POST without auth status = %d, want 401", got.Code)
 	}
@@ -48,7 +44,6 @@ func TestHTTPExchangeLifecycle(t *testing.T) {
 		t.Fatalf("created exchange = %+v", exchange)
 	}
 
-	// An outsider cannot read the exchange.
 	if got := testutil.PerformRequest(handler, http.MethodGet, "/api/exchanges/1", "", "3"); got.Code != http.StatusForbidden {
 		t.Fatalf("GET as outsider status = %d, want 403", got.Code)
 	}
@@ -56,12 +51,10 @@ func TestHTTPExchangeLifecycle(t *testing.T) {
 		t.Fatalf("GET as owner status = %d, want 200", got.Code)
 	}
 
-	// The service is now reserved: a second request conflicts.
 	if got := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, "3"); got.Code != http.StatusConflict {
 		t.Fatalf("second POST status = %d, want 409; body = %s", got.Code, got.Body.String())
 	}
 
-	// Only the owner may accept.
 	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/accept", "", "1"); got.Code != http.StatusForbidden {
 		t.Fatalf("accept by requester status = %d, want 403", got.Code)
 	}
@@ -72,7 +65,6 @@ func TestHTTPExchangeLifecycle(t *testing.T) {
 		t.Fatalf("requester balance after accept = %d, want 8", store.balances[1])
 	}
 
-	// Completion is confirmed by the requester.
 	if got := testutil.PerformRequest(handler, http.MethodPut, "/api/exchanges/1/complete", "", "1"); got.Code != http.StatusOK {
 		t.Fatalf("complete status = %d, body = %s", got.Code, got.Body.String())
 	}
@@ -80,7 +72,6 @@ func TestHTTPExchangeLifecycle(t *testing.T) {
 		t.Fatalf("owner balance after complete = %d, want 2", store.balances[2])
 	}
 
-	// Filter the list by status.
 	list := testutil.PerformRequest(handler, http.MethodGet, "/api/exchanges?status=completed", "", "1")
 	if list.Code != http.StatusOK {
 		t.Fatalf("list status = %d", list.Code)
@@ -98,7 +89,6 @@ func TestHTTPRejectAndCancel(t *testing.T) {
 	handler, store := newTestApplication()
 	store.grant(1, 10)
 
-	// Reject a pending request (owner only).
 	if got := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, "1"); got.Code != http.StatusCreated {
 		t.Fatalf("create for reject status = %d", got.Code)
 	}
@@ -111,7 +101,6 @@ func TestHTTPRejectAndCancel(t *testing.T) {
 		t.Fatalf("rejected exchange = %+v, err = %v", exchange, err)
 	}
 
-	// The service is free again: create and cancel a pending exchange.
 	if got := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges", `{"service_id":1}`, "1"); got.Code != http.StatusCreated {
 		t.Fatalf("create for cancel status = %d", got.Code)
 	}
@@ -153,7 +142,7 @@ func TestHTTPTransitionAndPathGuards(t *testing.T) {
 
 func TestHTTPExchangeErrors(t *testing.T) {
 	handler, store := newTestApplication()
-	store.grant(1, 1) // not enough for the 2-credit service
+	store.grant(1, 1)
 
 	tests := []struct {
 		name   string

@@ -10,11 +10,6 @@ import (
 	"barterswap/pkg/httpapi"
 )
 
-// Store persists exchanges and performs the atomic status-and-credit
-// transitions. Accept, Reject, Complete, and Cancel each run in a single SQL
-// transaction that locks the exchange row, re-checks its state, moves credits
-// when required, and updates the status, so a repeated call cannot transfer
-// credits a second time and two callers cannot both win a transition.
 type Store interface {
 	Create(ctx context.Context, params CreateParams) (Exchange, error)
 	GetByID(ctx context.Context, exchangeID int) (Exchange, error)
@@ -27,17 +22,10 @@ type Store interface {
 	Balance(ctx context.Context, userID int) (int, error)
 }
 
-// ServiceLookup is the slice of services.UseCases this feature needs to load a
-// service's owner, price, and availability. It is declared here, on the
-// consumer side, so this package does not depend on the service store; the
-// services.Service type is imported for its fields only (one direction, no
-// cycle).
 type ServiceLookup interface {
 	Get(ctx context.Context, serviceID int) (services.Service, error)
 }
 
-// RequesterChecker verifies the authenticated requester exists before an
-// exchange is created. It is satisfied by *users.Service.
 type RequesterChecker interface {
 	UserExists(ctx context.Context, userID int) (bool, error)
 }
@@ -52,8 +40,6 @@ func NewUseCases(store Store, svc ServiceLookup, users RequesterChecker) *UseCas
 	return &UseCases{store: store, services: svc, users: users}
 }
 
-// Create records a pending request for a service on behalf of the
-// authenticated requester.
 func (u *UseCases) Create(ctx context.Context, requesterID int, request CreateRequest) (Exchange, error) {
 	if request.ServiceID <= 0 {
 		return Exchange{}, fmt.Errorf("%w: service_id must be positive", httpapi.ErrValidation)
@@ -78,9 +64,6 @@ func (u *UseCases) Create(ctx context.Context, requesterID int, request CreateRe
 		return Exchange{}, fmt.Errorf("%w: you cannot request your own service", httpapi.ErrValidation)
 	}
 
-	// Early affordability check for a clear 400. The acceptance transaction
-	// re-checks the balance under a row lock, since credits can be spent
-	// elsewhere between requesting and acceptance.
 	balance, err := u.store.Balance(ctx, requesterID)
 	if err != nil {
 		return Exchange{}, err
@@ -97,8 +80,6 @@ func (u *UseCases) Create(ctx context.Context, requesterID int, request CreateRe
 	})
 }
 
-// List returns the exchanges the authenticated user takes part in, optionally
-// filtered by status.
 func (u *UseCases) List(ctx context.Context, userID int, status string) ([]Exchange, error) {
 	status = strings.TrimSpace(status)
 	if status != "" && !validStatus(status) {
@@ -114,7 +95,6 @@ func (u *UseCases) List(ctx context.Context, userID int, status string) ([]Excha
 	return exchanges, nil
 }
 
-// Get returns one exchange, visible only to its participants.
 func (u *UseCases) Get(ctx context.Context, actorID, exchangeID int) (Exchange, error) {
 	exchange, err := u.store.GetByID(ctx, exchangeID)
 	if err != nil {
@@ -126,34 +106,22 @@ func (u *UseCases) Get(ctx context.Context, actorID, exchangeID int) (Exchange, 
 	return exchange, nil
 }
 
-// Accept blocks the service price from the requester and moves a pending
-// request to accepted. Only the service owner may accept.
 func (u *UseCases) Accept(ctx context.Context, actorID, exchangeID int) (Exchange, error) {
 	return u.store.Accept(ctx, exchangeID, actorID)
 }
 
-// Reject declines a pending request. No credit has been blocked yet, so
-// nothing is refunded. Only the service owner may reject.
 func (u *UseCases) Reject(ctx context.Context, actorID, exchangeID int) (Exchange, error) {
 	return u.store.Reject(ctx, exchangeID, actorID)
 }
 
-// Complete finishes an accepted exchange and releases the blocked credits to
-// the service owner. Completion is confirmed by the requester (the party who
-// received the service), which is what releases their blocked credits.
 func (u *UseCases) Complete(ctx context.Context, actorID, exchangeID int) (Exchange, error) {
 	return u.store.Complete(ctx, exchangeID, actorID)
 }
 
-// Cancel cancels a pending or accepted exchange. When the exchange was already
-// accepted the blocked credits are refunded to the requester; a still-pending
-// exchange is cancelled without any refund. Either participant may cancel.
 func (u *UseCases) Cancel(ctx context.Context, actorID, exchangeID int) (Exchange, error) {
 	return u.store.Cancel(ctx, exchangeID, actorID)
 }
 
-// GetExchange satisfies reviews.ExchangeLookup so the reviews feature can
-// validate that a review targets a completed exchange the author took part in.
 func (u *UseCases) GetExchange(ctx context.Context, exchangeID int) (reviews.ExchangeSummary, error) {
 	exchange, err := u.store.GetByID(ctx, exchangeID)
 	if err != nil {
@@ -168,7 +136,6 @@ func (u *UseCases) GetExchange(ctx context.Context, exchangeID int) (reviews.Exc
 	}, nil
 }
 
-// CountCompletedExchanges satisfies stats.ExchangeStatsProvider.
 func (u *UseCases) CountCompletedExchanges(ctx context.Context, userID int) (int, error) {
 	return u.store.CountCompleted(ctx, userID)
 }

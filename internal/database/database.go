@@ -1,5 +1,3 @@
-// Package database owns the PostgreSQL connection and the embedded schema
-// shared by every feature package.
 package database
 
 import (

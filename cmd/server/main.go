@@ -33,10 +33,6 @@ func main() {
 	}
 }
 
-// run wires every feature, starts the HTTP server, and blocks until ctx is
-// cancelled (a shutdown signal) or the server fails, then shuts down
-// gracefully. It returns an error instead of exiting so it can be driven from
-// tests; main translates a non-nil error into a non-zero exit code.
 func run(ctx context.Context, logger *slog.Logger, cfg config.Config) error {
 	databaseCtx, cancelDatabase := context.WithTimeout(ctx, 10*time.Second)
 	db, err := database.Open(databaseCtx, cfg.DatabaseURL)
@@ -58,9 +54,6 @@ func run(ctx context.Context, logger *slog.Logger, cfg config.Config) error {
 	serviceUseCases := services.NewUseCases(services.NewPostgresStore(db), userService)
 	serviceHandler := services.NewHandler(serviceUseCases)
 
-	// The exchanges store owns the exchange lifecycle and credit journal and
-	// satisfies reviews.ExchangeLookup and stats.ExchangeStatsProvider, so the
-	// reviews and statistics features consume real exchange data.
 	exchangeUseCases := exchanges.NewUseCases(exchanges.NewPostgresStore(db), serviceUseCases, userService)
 	exchangeHandler := exchanges.NewHandler(exchangeUseCases)
 

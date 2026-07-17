@@ -16,8 +16,6 @@ func TestEmbeddedSchemaContainsExpectedTables(t *testing.T) {
 	}
 }
 
-// TestOpenUnreachable covers Open's Ping-error branch without a database: an
-// unreachable address with a short connect timeout makes PingContext fail.
 func TestOpenUnreachable(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -29,8 +27,6 @@ func TestOpenUnreachable(t *testing.T) {
 	}
 }
 
-// TestOpenAndMigrateIntegration credits Open's and Migrate's happy paths to this
-// package by calling them directly against the migrated integration database.
 func TestOpenAndMigrateIntegration(t *testing.T) {
 	if os.Getenv("RUN_POSTGRES_INTEGRATION") != "1" {
 		t.Skip("set RUN_POSTGRES_INTEGRATION=1 to run the PostgreSQL integration test")
@@ -54,8 +50,6 @@ func TestOpenAndMigrateIntegration(t *testing.T) {
 	}
 }
 
-// TestMigrateOnClosedDatabase covers Migrate's schema-apply error branch by
-// running it against a connection pool that has been closed.
 func TestMigrateOnClosedDatabase(t *testing.T) {
 	if os.Getenv("RUN_POSTGRES_INTEGRATION") != "1" {
 		t.Skip("set RUN_POSTGRES_INTEGRATION=1 to run the PostgreSQL integration test")
