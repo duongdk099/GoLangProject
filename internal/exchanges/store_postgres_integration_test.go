@@ -65,7 +65,6 @@ func TestPostgresStoreIntegration(t *testing.T) {
 
 	store := NewPostgresStore(db)
 
-	// Both users start with the 10 welcome credits.
 	requesterBalance, err := store.Balance(ctx, requester.ID)
 	if err != nil || requesterBalance != users.WelcomeCredits {
 		t.Fatalf("initial requester balance = %d, err = %v", requesterBalance, err)
@@ -81,14 +80,12 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		t.Fatalf("created status = %q, want pending", created.Status)
 	}
 
-	// The service is reserved: a second request conflicts at the database level.
 	if _, err := store.Create(ctx, CreateParams{
 		ServiceID: service.ID, RequesterID: requester.ID, OwnerID: owner.ID, Cost: service.Credits,
 	}); !errors.Is(err, httpapi.ErrConflict) {
 		t.Fatalf("second Create() error = %v, want conflict", err)
 	}
 
-	// Only the owner may accept; a stranger is forbidden.
 	if _, err := store.Accept(ctx, created.ID, requester.ID); !errors.Is(err, httpapi.ErrForbidden) {
 		t.Fatalf("Accept(non owner) error = %v, want forbidden", err)
 	}
@@ -99,7 +96,6 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		t.Fatalf("requester balance after accept = %d, want %d", balance, users.WelcomeCredits-service.Credits)
 	}
 
-	// Re-accepting is an invalid transition and must not debit again.
 	if _, err := store.Accept(ctx, created.ID, owner.ID); !errors.Is(err, httpapi.ErrValidation) {
 		t.Fatalf("Accept(again) error = %v, want validation", err)
 	}
@@ -107,7 +103,6 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		t.Fatalf("requester balance after repeat accept = %d, want %d", balance, users.WelcomeCredits-service.Credits)
 	}
 
-	// The requester confirms completion, releasing the credits to the owner.
 	if _, err := store.Complete(ctx, created.ID, owner.ID); !errors.Is(err, httpapi.ErrForbidden) {
 		t.Fatalf("Complete(owner) error = %v, want forbidden", err)
 	}
@@ -125,8 +120,6 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		t.Fatalf("requester completed count = %d, want 1", count)
 	}
 
-	// A fresh reservation on the same service can now proceed, and cancelling
-	// after acceptance refunds the requester exactly once.
 	second, err := store.Create(ctx, CreateParams{
 		ServiceID: service.ID, RequesterID: requester.ID, OwnerID: owner.ID, Cost: service.Credits,
 	})
@@ -146,9 +139,6 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}
 }
 
-// TestPostgresStoreReadsAndBranches covers the read methods, the reject and
-// pending/invalid cancel paths, and the not-found lookups that the main
-// lifecycle test does not exercise.
 func TestPostgresStoreReadsAndBranches(t *testing.T) {
 	db := openIntegrationDatabase(t)
 	ctx := context.Background()
@@ -174,7 +164,6 @@ func TestPostgresStoreReadsAndBranches(t *testing.T) {
 	}
 	store := NewPostgresStore(db)
 
-	// Not-found lookups.
 	if _, err := store.GetByID(ctx, 999_000_001); !errors.Is(err, httpapi.ErrNotFound) {
 		t.Fatalf("GetByID(missing) error = %v, want not found", err)
 	}
@@ -189,7 +178,6 @@ func TestPostgresStoreReadsAndBranches(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	// GetByID and List (with and without a status filter).
 	if got, err := store.GetByID(ctx, created.ID); err != nil || got.ID != created.ID {
 		t.Fatalf("GetByID() = %+v, err = %v", got, err)
 	}
@@ -203,7 +191,6 @@ func TestPostgresStoreReadsAndBranches(t *testing.T) {
 		t.Fatalf("List(no match) = %+v, err = %v", list, err)
 	}
 
-	// Reject requires the owner; a non-owner is forbidden.
 	if _, err := store.Reject(ctx, created.ID, requester.ID); !errors.Is(err, httpapi.ErrForbidden) {
 		t.Fatalf("Reject(non owner) error = %v, want forbidden", err)
 	}
@@ -212,7 +199,6 @@ func TestPostgresStoreReadsAndBranches(t *testing.T) {
 		t.Fatalf("Reject() = %+v, err = %v", rejected, err)
 	}
 
-	// Cancelling a still-pending exchange does not refund.
 	pending, err := store.Create(ctx, CreateParams{
 		ServiceID: service.ID, RequesterID: requester.ID, OwnerID: owner.ID, Cost: service.Credits,
 	})
@@ -227,7 +213,6 @@ func TestPostgresStoreReadsAndBranches(t *testing.T) {
 		t.Fatalf("balance changed on pending cancel: %d != %d", balance, balanceBefore)
 	}
 
-	// A completed exchange cannot be cancelled, and a stranger cannot cancel.
 	third, err := store.Create(ctx, CreateParams{
 		ServiceID: service.ID, RequesterID: requester.ID, OwnerID: owner.ID, Cost: service.Credits,
 	})
@@ -248,9 +233,6 @@ func TestPostgresStoreReadsAndBranches(t *testing.T) {
 	}
 }
 
-// TestPostgresAcceptRechecksBalance drives the in-transaction insufficient-funds
-// branch of Accept: the requester is drained after the request is created, so
-// the balance re-check inside the acceptance transaction fails.
 func TestPostgresAcceptRechecksBalance(t *testing.T) {
 	db := openIntegrationDatabase(t)
 	ctx := context.Background()
@@ -283,7 +265,6 @@ func TestPostgresAcceptRechecksBalance(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	// Drain the requester below the service price (unlinked spend, NULL exchange).
 	if err := credits.Record(ctx, db, credits.Entry{UserID: requester.ID, Amount: users.WelcomeCredits - 1, Type: credits.TypeSpend}); err != nil {
 		t.Fatalf("drain requester: %v", err)
 	}
@@ -292,10 +273,8 @@ func TestPostgresAcceptRechecksBalance(t *testing.T) {
 	}
 }
 
-// TestPostgresStoreOnClosedDatabase drives the database-error return branches of
-// every store entry point using a closed connection pool.
 func TestPostgresStoreOnClosedDatabase(t *testing.T) {
-	_ = openIntegrationDatabase(t) // gate on the integration flag
+	_ = openIntegrationDatabase(t)
 	ctx := context.Background()
 
 	openCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

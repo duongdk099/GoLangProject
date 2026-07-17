@@ -33,12 +33,6 @@ func openIntegrationDatabase(t *testing.T) *sql.DB {
 	return db
 }
 
-// createTestUser inserts a bare user row directly, without depending on the
-// users package: internal/users imports internal/credits (to record the
-// welcome credit through Record), so this package cannot import users back
-// without an import cycle. users.Create's own welcome-credit behavior is
-// covered by internal/users/store_postgres_integration_test.go instead; this
-// test only needs a valid user id to satisfy credit_transactions' foreign key.
 func createTestUser(t *testing.T, db *sql.DB, pseudo string) int {
 	t.Helper()
 	var id int
@@ -59,8 +53,6 @@ func TestJournalIntegration(t *testing.T) {
 		db.ExecContext(context.Background(), `DELETE FROM users WHERE id = $1`, userID)
 	})
 
-	// Record the welcome credit directly; this mirrors what users.Create does
-	// through the same Record function, without importing the users package.
 	if err := Record(ctx, db, Entry{UserID: userID, Amount: 10, Type: TypeEarn}); err != nil {
 		t.Fatalf("Record(welcome) error = %v", err)
 	}
@@ -69,7 +61,6 @@ func TestJournalIntegration(t *testing.T) {
 		t.Fatalf("Balance() = %d, err = %v, want 10", balance, err)
 	}
 
-	// A spend tied to an (unconstrained) exchange id lowers the balance.
 	if err := Record(ctx, db, Entry{UserID: userID, ExchangeID: 777, Amount: 3, Type: TypeSpend}); err != nil {
 		t.Fatalf("Record(spend) error = %v", err)
 	}
@@ -77,14 +68,11 @@ func TestJournalIntegration(t *testing.T) {
 		t.Fatalf("Balance() after spend = %d, want 7", balance)
 	}
 
-	// The same movement for the same exchange and type is rejected as a conflict.
 	if err := Record(ctx, db, Entry{UserID: userID, ExchangeID: 777, Amount: 3, Type: TypeSpend}); err == nil {
 		t.Fatal("Record(duplicate spend) expected a conflict error")
 	}
 }
 
-// TestJournalOnClosedDatabase drives the database-error return branches of
-// Record and Balance by using a connection pool that has been closed.
 func TestJournalOnClosedDatabase(t *testing.T) {
 	closed := cloneClosed(t)
 
@@ -96,8 +84,6 @@ func TestJournalOnClosedDatabase(t *testing.T) {
 	}
 }
 
-// cloneClosed opens a pool to the integration database and closes it, so
-// calls on it fail with a driver error without disturbing a shared open pool.
 func cloneClosed(t *testing.T) *sql.DB {
 	t.Helper()
 	if os.Getenv("RUN_POSTGRES_INTEGRATION") != "1" {

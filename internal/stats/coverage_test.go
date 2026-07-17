@@ -14,8 +14,6 @@ import (
 
 var errBoom = errors.New("boom")
 
-// errStore inherits stubStore but can fail any single read, exercising each
-// dependency-error return branch of Get in turn.
 type errStore struct {
 	*stubStore
 	activeErr  error

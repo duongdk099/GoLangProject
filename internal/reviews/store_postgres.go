@@ -94,9 +94,6 @@ func (s *PostgresStore) query(ctx context.Context, query string, arg int) ([]Rev
 	return reviews, nil
 }
 
-// isUniqueViolation reports whether err is a PostgreSQL unique constraint
-// violation (SQLSTATE 23505), without importing the driver's error type
-// directly so this file only depends on database/sql and fmt/errors.
 func isUniqueViolation(err error) bool {
 	if err == nil {
 		return false

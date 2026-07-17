@@ -33,8 +33,6 @@ func AuthenticatedUserID(ctx context.Context) (int, bool) {
 	return userID, ok
 }
 
-// RequireAuthenticatedUser reads the authenticated user set by Authentication,
-// writing a 401 response and returning ok=false when none is present.
 func RequireAuthenticatedUser(w http.ResponseWriter, r *http.Request) (int, bool) {
 	userID, ok := AuthenticatedUserID(r.Context())
 	if !ok {

@@ -19,8 +19,6 @@ func NewPostgresStore(db *sql.DB) *PostgresStore {
 	return &PostgresStore{db: db}
 }
 
-// lockedExchange is an exchange read FOR UPDATE inside a transition, carrying
-// the internal credit cost alongside the public fields.
 type lockedExchange struct {
 	Exchange
 	cost int
@@ -136,7 +134,7 @@ func (s *PostgresStore) Accept(ctx context.Context, exchangeID, ownerID int) (Ex
 			return nil
 		},
 		credit: func(ctx context.Context, tx *sql.Tx, ex lockedExchange) error {
-			// Re-check the balance under the row lock before blocking credits.
+
 			balance, err := credits.Balance(ctx, tx, ex.RequesterID)
 			if err != nil {
 				return err
@@ -161,7 +159,6 @@ func (s *PostgresStore) Reject(ctx context.Context, exchangeID, ownerID int) (Ex
 			}
 			return nil
 		},
-		// No credit was blocked on a pending request, so rejection moves no credit.
 	})
 }
 
@@ -183,9 +180,6 @@ func (s *PostgresStore) Complete(ctx context.Context, exchangeID, requesterID in
 	})
 }
 
-// Cancel is not a simple single-source transition: it is valid from both
-// pending and accepted, and only the accepted case refunds the requester, so
-// it does not reuse the transition helper.
 func (s *PostgresStore) Cancel(ctx context.Context, exchangeID, actorID int) (Exchange, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -203,7 +197,7 @@ func (s *PostgresStore) Cancel(ctx context.Context, exchangeID, actorID int) (Ex
 
 	switch locked.Status {
 	case StatusPending:
-		// Nothing was blocked, so nothing is refunded.
+
 	case StatusAccepted:
 		if err := credits.Record(ctx, tx, credits.Entry{
 			UserID: locked.RequesterID, ExchangeID: locked.ID, Amount: locked.cost, Type: credits.TypeRefund,
@@ -224,8 +218,6 @@ func (s *PostgresStore) Cancel(ctx context.Context, exchangeID, actorID int) (Ex
 	return updated, nil
 }
 
-// transition describes an atomic move from exactly one status to another,
-// with an optional credit movement performed inside the same transaction.
 type transition struct {
 	requiredStatus string
 	nextStatus     string
@@ -266,8 +258,6 @@ func (s *PostgresStore) transition(ctx context.Context, exchangeID int, t transi
 	return updated, nil
 }
 
-// lockExchange reads an exchange FOR UPDATE, serializing concurrent transitions
-// on the same row so credits and status stay consistent.
 func lockExchange(ctx context.Context, tx *sql.Tx, exchangeID int) (lockedExchange, error) {
 	var locked lockedExchange
 	var createdAt, updatedAt time.Time
@@ -291,11 +281,6 @@ func lockExchange(ctx context.Context, tx *sql.Tx, exchangeID int) (lockedExchan
 	return locked, nil
 }
 
-// commitStatus applies the status change guarded by the expected current
-// status. The guard plus RowsAffected check means that if the row moved out of
-// the expected status between the lock and the update (which the row lock
-// prevents, but the guard keeps the invariant explicit), no phantom update is
-// reported as success.
 func commitStatus(ctx context.Context, tx *sql.Tx, exchangeID int, nextStatus, fromStatus string) (Exchange, error) {
 	var exchange Exchange
 	var createdAt, updatedAt time.Time
@@ -319,9 +304,6 @@ func commitStatus(ctx context.Context, tx *sql.Tx, exchangeID int, nextStatus, f
 	return exchange, nil
 }
 
-// isUniqueViolation reports whether err is a PostgreSQL unique constraint
-// violation (SQLSTATE 23505), mirroring the helper in internal/reviews and
-// internal/credits.
 func isUniqueViolation(err error) bool {
 	if err == nil {
 		return false

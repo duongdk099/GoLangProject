@@ -12,9 +12,6 @@ import (
 	"barterswap/pkg/httpapi"
 )
 
-// TestPostgresStoreFilterBranches exercises the Ville and Search filter
-// branches of List and the not-found path of Update, which the main
-// lifecycle test does not reach.
 func TestPostgresStoreFilterBranches(t *testing.T) {
 	db := openIntegrationDatabase(t)
 	ctx := context.Background()
@@ -49,7 +46,6 @@ func TestPostgresStoreFilterBranches(t *testing.T) {
 		t.Fatalf("List(search) = %+v, err = %v", bySearch, err)
 	}
 
-	// Updating a service that does not exist returns not-found (rows == 0).
 	if _, err := store.Update(ctx, 999_000_101, UpdateParams{
 		Titre: "X", Categorie: "Informatique", DureeMinutes: 30, Credits: 1,
 	}); !errors.Is(err, httpapi.ErrNotFound) {
@@ -57,10 +53,8 @@ func TestPostgresStoreFilterBranches(t *testing.T) {
 	}
 }
 
-// TestPostgresStoreOnClosedDatabase drives the database-error return branches of
-// every store entry point using a closed connection pool.
 func TestPostgresStoreOnClosedDatabase(t *testing.T) {
-	_ = openIntegrationDatabase(t) // gate on the integration flag
+	_ = openIntegrationDatabase(t)
 	ctx := context.Background()
 
 	openCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

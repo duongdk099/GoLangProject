@@ -16,8 +16,6 @@ import (
 
 var errBoom = errors.New("boom")
 
-// existsErrStore fails the duplicate check, exercising the dependency-error
-// branch of Create.
 type existsErrStore struct {
 	*memoryStore
 	err error
@@ -27,8 +25,6 @@ func (s existsErrStore) ExistsForAuthor(context.Context, int, int) (bool, error)
 	return false, s.err
 }
 
-// listTargetStore replaces only ListByTarget so tests can inject a nil result
-// or an error.
 type listTargetStore struct {
 	*memoryStore
 	list []Review
@@ -39,8 +35,6 @@ func (s listTargetStore) ListByTarget(context.Context, int) ([]Review, error) {
 	return s.list, s.err
 }
 
-// listServiceStore replaces only ListByService so tests can inject a nil
-// result or an error.
 type listServiceStore struct {
 	*memoryStore
 	list []Review
@@ -67,7 +61,7 @@ func TestCreateRejectsTooLongComment(t *testing.T) {
 }
 
 func TestCreateByOwnerTargetsRequester(t *testing.T) {
-	// When the owner (3) reviews the exchange, the target is the requester (2).
+
 	useCases := NewUseCases(newMemoryStore(), completedExchange(), &stubServiceExistenceChecker{services: map[int]services.Service{10: {ID: 10}}})
 	review, err := useCases.Create(context.Background(), 3, 1, CreateRequest{Note: 4})
 	if err != nil {
@@ -128,8 +122,6 @@ func TestListForServiceBranches(t *testing.T) {
 	}
 }
 
-// sqlStateError is a fake driver error carrying a SQLSTATE code, used to drive
-// the branches of isUniqueViolation without importing the real driver.
 type sqlStateError struct{ code string }
 
 func (e sqlStateError) Error() string    { return "sqlstate " + e.code }
@@ -160,7 +152,6 @@ func TestHTTPErrorBranches(t *testing.T) {
 	svc := &stubServiceExistenceChecker{services: map[int]services.Service{10: {ID: 10}}}
 	handler := buildHandler(newMemoryStore(), completedExchange(), svc)
 
-	// Malformed body and invalid path id on the create route.
 	if r := testutil.PerformRequest(handler, http.MethodPost, "/api/exchanges/1/review", `{"note":`, "2"); r.Code != http.StatusBadRequest {
 		t.Fatalf("create malformed body status = %d, want 400", r.Code)
 	}
@@ -168,7 +159,6 @@ func TestHTTPErrorBranches(t *testing.T) {
 		t.Fatalf("create invalid path id status = %d, want 400", r.Code)
 	}
 
-	// Invalid path id on both listing routes.
 	if r := testutil.PerformRequest(handler, http.MethodGet, "/api/users/abc/reviews", "", ""); r.Code != http.StatusBadRequest {
 		t.Fatalf("listForUser invalid path id status = %d, want 400", r.Code)
 	}
@@ -176,7 +166,6 @@ func TestHTTPErrorBranches(t *testing.T) {
 		t.Fatalf("listForService invalid path id status = %d, want 400", r.Code)
 	}
 
-	// A store failure surfaces through listForUser as a 500.
 	errHandler := buildHandler(listTargetStore{memoryStore: newMemoryStore(), err: errBoom}, completedExchange(), svc)
 	if r := testutil.PerformRequest(errHandler, http.MethodGet, "/api/users/3/reviews", "", ""); r.Code != http.StatusInternalServerError {
 		t.Fatalf("listForUser store error status = %d, want 500", r.Code)

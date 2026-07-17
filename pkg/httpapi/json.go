@@ -97,8 +97,6 @@ func WriteBadRequest(w http.ResponseWriter, message string) {
 	}})
 }
 
-// PathID parses the {id} path value as a positive integer, writing a 400
-// response and returning ok=false when it is missing or invalid.
 func PathID(w http.ResponseWriter, r *http.Request) (int, bool) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil || id <= 0 {

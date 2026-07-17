@@ -11,8 +11,6 @@ import (
 
 var errBoom = errors.New("boom")
 
-// listOverrideStore lets a test replace only List while inheriting every other
-// method from the in-memory store.
 type listOverrideStore struct {
 	*memoryStore
 	list []Exchange
@@ -71,7 +69,7 @@ func TestCreateRejectsMissingRequester(t *testing.T) {
 	store := newMemoryStore()
 	store.grant(4, 10)
 	svc := stubServices{services: map[int]services.Service{1: {ID: 1, ProviderID: 2, Credits: 2, Actif: true}}}
-	useCases := NewUseCases(store, svc, stubUsers{existing: map[int]bool{}}) // user 4 not present
+	useCases := NewUseCases(store, svc, stubUsers{existing: map[int]bool{}})
 
 	if _, err := useCases.Create(context.Background(), 4, CreateRequest{ServiceID: 1}); !errors.Is(err, httpapi.ErrValidation) {
 		t.Fatalf("Create(missing requester) error = %v, want validation", err)
@@ -87,7 +85,7 @@ func TestCreatePropagatesUnknownService(t *testing.T) {
 }
 
 func TestCreatePropagatesDependencyErrors(t *testing.T) {
-	// UserExists error propagates.
+
 	store := newMemoryStore()
 	svc := stubServices{services: map[int]services.Service{1: {ID: 1, ProviderID: 2, Credits: 2, Actif: true}}}
 	usersErr := NewUseCases(store, svc, stubUsers{existing: map[int]bool{1: true}, err: errBoom})
@@ -95,7 +93,6 @@ func TestCreatePropagatesDependencyErrors(t *testing.T) {
 		t.Fatalf("Create(user check error) error = %v, want boom", err)
 	}
 
-	// Balance error propagates.
 	balanceStore := newMemoryStore()
 	balanceStore.balanceErr = errBoom
 	balanceErrUseCases := NewUseCases(balanceStore, svc, stubUsers{existing: map[int]bool{1: true}})

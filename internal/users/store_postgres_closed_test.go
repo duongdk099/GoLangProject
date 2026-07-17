@@ -9,8 +9,6 @@ import (
 	"barterswap/internal/database"
 )
 
-// TestPostgresStoreOnClosedDatabase drives the database-error return branches of
-// every store entry point using a connection pool that has been closed.
 func TestPostgresStoreOnClosedDatabase(t *testing.T) {
 	if os.Getenv("RUN_POSTGRES_INTEGRATION") != "1" {
 		t.Skip("set RUN_POSTGRES_INTEGRATION=1 to run the PostgreSQL integration test")

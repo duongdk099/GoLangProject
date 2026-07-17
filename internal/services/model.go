@@ -1,5 +1,3 @@
-// Package services owns service advertisements: publishing, updating,
-// deleting, and server-side filtered listing.
 package services
 
 type Service struct {
@@ -15,9 +13,6 @@ type Service struct {
 	CreatedAt    string `json:"created_at"`
 }
 
-// categories is the closed list of allowed categories from the subject. It
-// intentionally spells "Demenagement" without an accent to keep the value
-// stable across source encodings.
 var categories = map[string]struct{}{
 	"Informatique": {}, "Jardinage": {}, "Bricolage": {}, "Cuisine": {},
 	"Musique": {}, "Langues": {}, "Sport": {}, "Tutorat": {},
@@ -69,8 +64,6 @@ type UpdateParams struct {
 	Actif        bool
 }
 
-// Filter carries the server-side filters accepted by GET /api/services.
-// Every non-empty field narrows the result set.
 type Filter struct {
 	Categorie string
 	Ville     string

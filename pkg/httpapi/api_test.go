@@ -73,7 +73,7 @@ func TestDecodeJSON(t *testing.T) {
 }
 
 func TestDecodeJSONInvalidValue(t *testing.T) {
-	// A top-level type mismatch has no Field, exercising the second typeError branch.
+
 	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`["not","an","object"]`))
 	var dst struct {
 		Name string `json:"name"`
@@ -174,7 +174,7 @@ func TestPathID(t *testing.T) {
 	})
 
 	t.Run("missing", func(t *testing.T) {
-		// A request that carries no {id} path value at all also fails.
+
 		response := httptest.NewRecorder()
 		if _, ok := PathID(response, httptest.NewRequest(http.MethodGet, "/x", nil)); ok {
 			t.Fatal("PathID() ok = true, want false for a missing id")
@@ -264,8 +264,6 @@ func TestRequireAuthenticatedUser(t *testing.T) {
 	})
 }
 
-// stubRegistrar registers a single route so that NewRouter's registrar loop and
-// a registered route are both exercised.
 type stubRegistrar struct{}
 
 func (stubRegistrar) RegisterRoutes(mux *http.ServeMux) {
@@ -308,8 +306,7 @@ func TestNewApplicationHandler(t *testing.T) {
 }
 
 func TestLoggingRecordsImplicitOK(t *testing.T) {
-	// A handler that never writes leaves the recorder status at zero, exercising
-	// Logging's implicit-200 fallback.
+
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := Logging(logger)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	response := httptest.NewRecorder()

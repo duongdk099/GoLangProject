@@ -6,7 +6,6 @@ import (
 	"barterswap/pkg/httpapi"
 )
 
-// Validate checks an entry before it is written to the journal.
 func Validate(entry Entry) error {
 	if entry.UserID <= 0 {
 		return fmt.Errorf("%w: credit entry requires a user", httpapi.ErrValidation)
@@ -29,9 +28,6 @@ func validType(t string) bool {
 	}
 }
 
-// signedMontant converts the positive Amount into the value stored in
-// credit_transactions.montant: a spend is a debit (negative); an earn or a
-// refund is a credit (positive).
 func signedMontant(entry Entry) int {
 	if entry.Type == TypeSpend {
 		return -entry.Amount

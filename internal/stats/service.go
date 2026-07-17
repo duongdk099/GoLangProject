@@ -1,5 +1,3 @@
-// Package stats aggregates a user's dashboard: active services, completed
-// exchanges, credit balance and totals, and review reputation.
 package stats
 
 import (
@@ -9,7 +7,6 @@ import (
 	"barterswap/pkg/httpapi"
 )
 
-// UserStats is the aggregated dashboard returned by GET /api/users/{id}/stats.
 type UserStats struct {
 	UserID            int     `json:"user_id"`
 	ServicesActifs    int     `json:"services_actifs"`
@@ -21,9 +18,6 @@ type UserStats struct {
 	TotalDepense      int     `json:"total_depense"`
 }
 
-// Store aggregates the data Person 2 owns directly: active services and
-// reviews. It also reads the shared credit_transactions journal, whose
-// schema is common infrastructure.
 type Store interface {
 	CountActiveServices(ctx context.Context, providerID int) (int, error)
 	CreditBalance(ctx context.Context, userID int) (int, error)
@@ -31,14 +25,10 @@ type Store interface {
 	ReviewAggregate(ctx context.Context, targetID int) (average float64, count int, err error)
 }
 
-// ExchangeStatsProvider is the contract this feature needs from the
-// exchanges feature (owned by Person 3), defined here on the consumer side.
 type ExchangeStatsProvider interface {
 	CountCompletedExchanges(ctx context.Context, userID int) (int, error)
 }
 
-// UserExistenceChecker is the slice of users.Service this feature needs to
-// return 404 for an unknown user.
 type UserExistenceChecker interface {
 	UserExists(ctx context.Context, userID int) (bool, error)
 }
